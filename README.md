@@ -70,7 +70,7 @@ Input:
 ### `PATCH /api/applications/:id`
 Input (any subset):
 ```json
-{ "status": "Interviewing", "company": "Acme", "jobTitle": "SWE", "jobUrl": "https://example.com/job/1" }
+{ "status": "Interview", "company": "Acme", "jobTitle": "SWE", "jobUrl": "https://example.com/job/1" }
 ```
 
 ## Sheet Columns

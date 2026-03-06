@@ -1,9 +1,9 @@
 export const APPLICATION_STATUSES = [
   'Applied',
-  'Interviewing',
-  'Offer',
-  'Rejected',
-  'Withdrawn'
+  'Reject',
+  'Accepted',
+  'Interview',
+  'OA'
 ] as const;
 
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];

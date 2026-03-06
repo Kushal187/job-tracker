@@ -41,14 +41,16 @@
   --danger-hover: #B91C1C;
 
   /* Status badges - light */
-  --status-applied-bg: #DBEAFE;
-  --status-applied-text: #1D4ED8;
-  --status-interview-bg: #FEF3C7;
-  --status-interview-text: #92400E;
-  --status-offer-bg: #D1FAE5;
-  --status-offer-text: #065F46;
-  --status-rejected-bg: #FEE2E2;
-  --status-rejected-text: #B91C1C;
+  --status-applied-bg: #4B5563;
+  --status-applied-text: #F9FAFB;
+  --status-reject-bg: #B91C1C;
+  --status-reject-text: #FEE2E2;
+  --status-accepted-bg: #047857;
+  --status-accepted-text: #D1FAE5;
+  --status-interview-bg: #1D4ED8;
+  --status-interview-text: #DBEAFE;
+  --status-oa-bg: #BFDBFE;
+  --status-oa-text: #1E3A8A;
 
   /* Inputs */
   --input-height: 36px;
@@ -78,14 +80,16 @@
   --danger: #EF4444;
   --danger-hover: #F87171;
 
-  --status-applied-bg: rgba(59, 130, 246, 0.2);
-  --status-applied-text: #93C5FD;
-  --status-interview-bg: rgba(245, 158, 11, 0.2);
-  --status-interview-text: #FCD34D;
-  --status-offer-bg: rgba(34, 197, 94, 0.2);
-  --status-offer-text: #86EFAC;
-  --status-rejected-bg: rgba(239, 68, 68, 0.2);
-  --status-rejected-text: #FCA5A5;
+  --status-applied-bg: #374151;
+  --status-applied-text: #F3F4F6;
+  --status-reject-bg: #991B1B;
+  --status-reject-text: #FCA5A5;
+  --status-accepted-bg: #065F46;
+  --status-accepted-text: #A7F3D0;
+  --status-interview-bg: #1E40AF;
+  --status-interview-text: #BFDBFE;
+  --status-oa-bg: #1E3A8A;
+  --status-oa-text: #BFDBFE;
 
   --input-border: #2A2A2A;
   --table-header-bg: #141414;

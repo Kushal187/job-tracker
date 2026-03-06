@@ -21,7 +21,7 @@ begin
   ) then
     alter table public.applications
       add constraint applications_status_check
-      check (status in ('Applied', 'Interviewing', 'Offer', 'Rejected', 'Withdrawn'));
+      check (status in ('Applied', 'Reject', 'Accepted', 'Interview', 'OA'));
   end if;
 end
 $$;

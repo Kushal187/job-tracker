@@ -23,8 +23,6 @@ type Application = {
 
 type FilterState = {
   status: string;
-  dateFrom: string;
-  dateTo: string;
 };
 
 type SortKey =
@@ -45,28 +43,26 @@ const initialCreateState = {
 };
 
 const MOCK_APPLICATIONS: Application[] = [
-  { id: 'demo-1', company: 'Linear', jobTitle: 'Product Designer', status: 'Interviewing', jobUrl: 'https://jobs.linear.app/product-designer', appliedAt: '2026-02-24T13:05:00.000Z', updatedAt: '2026-02-24T13:05:00.000Z', sheetRowNumber: 102 },
+  { id: 'demo-1', company: 'Linear', jobTitle: 'Product Designer', status: 'Interview', jobUrl: 'https://jobs.linear.app/product-designer', appliedAt: '2026-02-24T13:05:00.000Z', updatedAt: '2026-02-24T13:05:00.000Z', sheetRowNumber: 102 },
   { id: 'demo-2', company: 'Notion', jobTitle: 'Growth Marketing Manager', status: 'Applied', jobUrl: 'https://www.notion.so/careers/growth-marketing-manager', appliedAt: '2026-02-22T15:32:00.000Z', updatedAt: '2026-02-22T15:32:00.000Z', sheetRowNumber: 103 },
-  { id: 'demo-3', company: 'Stripe', jobTitle: 'Frontend Engineer, Dashboard', status: 'Rejected', jobUrl: 'https://stripe.com/jobs/listing/frontend-engineer-dashboard', appliedAt: '2026-02-17T09:12:00.000Z', updatedAt: '2026-02-19T08:41:00.000Z', sheetRowNumber: 104 },
+  { id: 'demo-3', company: 'Stripe', jobTitle: 'Frontend Engineer, Dashboard', status: 'Reject', jobUrl: 'https://stripe.com/jobs/listing/frontend-engineer-dashboard', appliedAt: '2026-02-17T09:12:00.000Z', updatedAt: '2026-02-19T08:41:00.000Z', sheetRowNumber: 104 },
   { id: 'demo-4', company: 'Mercury', jobTitle: 'Senior Product Manager', status: 'Applied', jobUrl: 'https://mercury.com/jobs/senior-product-manager', appliedAt: '2026-02-15T20:07:00.000Z', updatedAt: '2026-02-15T20:07:00.000Z', sheetRowNumber: 105 },
-  { id: 'demo-5', company: 'Ramp', jobTitle: 'Technical Program Manager', status: 'Interviewing', jobUrl: 'https://ramp.com/careers/technical-program-manager', appliedAt: '2026-02-11T14:30:00.000Z', updatedAt: '2026-02-18T11:22:00.000Z', sheetRowNumber: 106 },
-  { id: 'demo-6', company: 'Vercel', jobTitle: 'Developer Relations Engineer', status: 'Offer', jobUrl: 'https://vercel.com/careers/developer-relations-engineer', appliedAt: '2026-02-05T16:10:00.000Z', updatedAt: '2026-02-27T11:15:00.000Z', sheetRowNumber: 107 },
+  { id: 'demo-5', company: 'Ramp', jobTitle: 'Technical Program Manager', status: 'Interview', jobUrl: 'https://ramp.com/careers/technical-program-manager', appliedAt: '2026-02-11T14:30:00.000Z', updatedAt: '2026-02-18T11:22:00.000Z', sheetRowNumber: 106 },
+  { id: 'demo-6', company: 'Vercel', jobTitle: 'Developer Relations Engineer', status: 'Accepted', jobUrl: 'https://vercel.com/careers/developer-relations-engineer', appliedAt: '2026-02-05T16:10:00.000Z', updatedAt: '2026-02-27T11:15:00.000Z', sheetRowNumber: 107 },
   { id: 'demo-7', company: 'Figma', jobTitle: 'Design Systems Engineer', status: 'Applied', jobUrl: 'https://www.figma.com/careers/design-systems-engineer', appliedAt: '2026-02-02T10:45:00.000Z', updatedAt: '2026-02-02T10:45:00.000Z', sheetRowNumber: 108 },
-  { id: 'demo-8', company: 'OpenAI', jobTitle: 'Product Operations Lead', status: 'Withdrawn', jobUrl: 'https://openai.com/careers/product-operations-lead', appliedAt: '2026-01-31T11:05:00.000Z', updatedAt: '2026-02-03T08:32:00.000Z', sheetRowNumber: 109 },
+  { id: 'demo-8', company: 'OpenAI', jobTitle: 'Product Operations Lead', status: 'OA', jobUrl: 'https://openai.com/careers/product-operations-lead', appliedAt: '2026-01-31T11:05:00.000Z', updatedAt: '2026-02-03T08:32:00.000Z', sheetRowNumber: 109 },
   { id: 'demo-9', company: 'Anthropic', jobTitle: 'Operations Analyst', status: 'Applied', jobUrl: 'https://www.anthropic.com/careers/operations-analyst', appliedAt: '2026-01-28T18:22:00.000Z', updatedAt: '2026-01-28T18:22:00.000Z', sheetRowNumber: 110 },
-  { id: 'demo-10', company: 'Airtable', jobTitle: 'Customer Success Manager', status: 'Interviewing', jobUrl: 'https://airtable.com/careers/customer-success-manager', appliedAt: '2026-01-24T12:15:00.000Z', updatedAt: '2026-02-01T10:45:00.000Z', sheetRowNumber: 111 },
-  { id: 'demo-11', company: 'Figma', jobTitle: 'Staff Engineer', status: 'Rejected', jobUrl: 'https://www.figma.com/careers/staff-engineer', appliedAt: '2026-01-20T09:00:00.000Z', updatedAt: '2026-01-25T14:20:00.000Z', sheetRowNumber: 112 },
+  { id: 'demo-10', company: 'Airtable', jobTitle: 'Customer Success Manager', status: 'Interview', jobUrl: 'https://airtable.com/careers/customer-success-manager', appliedAt: '2026-01-24T12:15:00.000Z', updatedAt: '2026-02-01T10:45:00.000Z', sheetRowNumber: 111 },
+  { id: 'demo-11', company: 'Figma', jobTitle: 'Staff Engineer', status: 'Reject', jobUrl: 'https://www.figma.com/careers/staff-engineer', appliedAt: '2026-01-20T09:00:00.000Z', updatedAt: '2026-01-25T14:20:00.000Z', sheetRowNumber: 112 },
   { id: 'demo-12', company: 'Plaid', jobTitle: 'Backend Engineer', status: 'Applied', jobUrl: 'https://plaid.com/careers/backend-engineer', appliedAt: '2026-01-18T11:30:00.000Z', updatedAt: '2026-01-18T11:30:00.000Z', sheetRowNumber: 113 },
-  { id: 'demo-13', company: 'Retool', jobTitle: 'Solutions Engineer', status: 'Interviewing', jobUrl: 'https://retool.com/careers/solutions-engineer', appliedAt: '2026-01-15T16:45:00.000Z', updatedAt: '2026-01-22T10:00:00.000Z', sheetRowNumber: 114 },
-  { id: 'demo-14', company: 'Loom', jobTitle: 'Product Designer', status: 'Offer', jobUrl: 'https://loom.com/careers/product-designer', appliedAt: '2026-01-10T08:20:00.000Z', updatedAt: '2026-02-28T09:30:00.000Z', sheetRowNumber: 115 },
-  { id: 'demo-15', company: 'Coda', jobTitle: 'Full Stack Engineer', status: 'Withdrawn', jobUrl: 'https://coda.io/careers/full-stack-engineer', appliedAt: '2026-01-05T14:00:00.000Z', updatedAt: '2026-01-12T11:15:00.000Z', sheetRowNumber: 116 }
+  { id: 'demo-13', company: 'Retool', jobTitle: 'Solutions Engineer', status: 'Interview', jobUrl: 'https://retool.com/careers/solutions-engineer', appliedAt: '2026-01-15T16:45:00.000Z', updatedAt: '2026-01-22T10:00:00.000Z', sheetRowNumber: 114 },
+  { id: 'demo-14', company: 'Loom', jobTitle: 'Product Designer', status: 'Accepted', jobUrl: 'https://loom.com/careers/product-designer', appliedAt: '2026-01-10T08:20:00.000Z', updatedAt: '2026-02-28T09:30:00.000Z', sheetRowNumber: 115 },
+  { id: 'demo-15', company: 'Coda', jobTitle: 'Full Stack Engineer', status: 'OA', jobUrl: 'https://coda.io/careers/full-stack-engineer', appliedAt: '2026-01-05T14:00:00.000Z', updatedAt: '2026-01-12T11:15:00.000Z', sheetRowNumber: 116 }
 ];
 
 function buildQuery(filters: FilterState) {
   const params = new URLSearchParams();
   if (filters.status) params.set('status', filters.status);
-  if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
-  if (filters.dateTo) params.set('dateTo', filters.dateTo);
   const q = params.toString();
   return q ? `?${q}` : '';
 }
@@ -87,12 +83,12 @@ function truncateUrl(input: string, max = 25): string {
 function statusBadgeStyle(status: ApplicationStatus): React.CSSProperties {
   const map: Record<ApplicationStatus, React.CSSProperties> = {
     Applied: { backgroundColor: 'var(--status-applied-bg)', color: 'var(--status-applied-text)' },
-    Interviewing: { backgroundColor: 'var(--status-interview-bg)', color: 'var(--status-interview-text)' },
-    Offer: { backgroundColor: 'var(--status-offer-bg)', color: 'var(--status-offer-text)' },
-    Rejected: { backgroundColor: 'var(--status-rejected-bg)', color: 'var(--status-rejected-text)' },
-    Withdrawn: { backgroundColor: 'var(--status-rejected-bg)', color: 'var(--status-rejected-text)' }
+    Interview: { backgroundColor: 'var(--status-interview-bg)', color: 'var(--status-interview-text)' },
+    Accepted: { backgroundColor: 'var(--status-accepted-bg)', color: 'var(--status-accepted-text)' },
+    Reject: { backgroundColor: 'var(--status-reject-bg)', color: 'var(--status-reject-text)' },
+    OA: { backgroundColor: 'var(--status-oa-bg)', color: 'var(--status-oa-text)' }
   };
-  return map[status] || { backgroundColor: 'var(--status-rejected-bg)', color: 'var(--status-rejected-text)' };
+  return map[status] || { backgroundColor: 'var(--status-reject-bg)', color: 'var(--status-reject-text)' };
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -169,9 +165,15 @@ const styles: Record<string, React.CSSProperties> = {
   filtersRow: {
     display: 'flex',
     flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 12
+    alignItems: 'flex-end',
+    columnGap: 14,
+    rowGap: 12,
+    marginBottom: 14
+  },
+  filterGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4
   },
   filterLabel: {
     fontSize: 11,
@@ -182,22 +184,45 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 4
   },
   filterInput: {
-    height: 32,
-    padding: '0 8px',
-    fontSize: 12,
+    height: 36,
+    padding: '0 10px',
+    fontSize: 13,
     border: '1px solid var(--input-border)',
-    borderRadius: 6,
+    borderRadius: 8,
     background: 'var(--surface)',
     color: 'var(--text)',
     minWidth: 120
   },
+  filterSelect: {
+    height: 36,
+    padding: '0 36px 0 10px',
+    fontSize: 13,
+    border: '1px solid var(--input-border)',
+    borderRadius: 8,
+    backgroundColor: 'var(--surface)',
+    backgroundImage:
+      "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14' fill='none'%3E%3Cpath d='M3.5 5.25L7 8.75L10.5 5.25' stroke='%236B7280' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")",
+    backgroundRepeat: 'no-repeat',
+    backgroundPosition: 'right 10px center',
+    color: 'var(--text)',
+    minWidth: 120,
+    appearance: 'none' as const
+  },
   clearBtn: {
-    background: 'none',
-    border: 'none',
+    height: 36,
+    padding: '0 12px',
+    border: '1px solid var(--border)',
+    borderRadius: 8,
+    background: 'var(--surface)',
     color: 'var(--text-secondary)',
-    fontSize: 12,
-    cursor: 'pointer',
-    padding: '4px 0'
+    fontSize: 13,
+    cursor: 'pointer'
+  },
+  statusMessage: {
+    fontSize: 13,
+    color: 'var(--status-accepted-bg)',
+    fontWeight: 600,
+    marginBottom: 8
   },
   tableWrap: {
     border: '1px solid var(--border)',
@@ -241,11 +266,16 @@ const styles: Record<string, React.CSSProperties> = {
   statusSelect: {
     height: 28,
     minWidth: 116,
-    padding: '0 8px',
+    padding: '0 30px 0 10px',
     fontSize: 12,
     borderRadius: 9999,
     border: '1px solid var(--input-border)',
-    background: 'var(--surface)'
+    backgroundColor: 'var(--surface)',
+    backgroundImage:
+      "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14' fill='none'%3E%3Cpath d='M3.5 5.25L7 8.75L10.5 5.25' stroke='%23F3F4F6' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")",
+    backgroundRepeat: 'no-repeat',
+    backgroundPosition: 'right 10px center',
+    appearance: 'none' as const
   },
   urlLink: {
     color: 'var(--accent)',
@@ -372,10 +402,9 @@ export function Dashboard() {
   const [createForm, setCreateForm] = useState(initialCreateState);
   const [editForm, setEditForm] = useState<Application | null>(null);
   const [filters, setFilters] = useState<FilterState>({
-    status: '',
-    dateFrom: '',
-    dateTo: ''
+    status: ''
   });
+  const [searchTerm, setSearchTerm] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -450,16 +479,20 @@ export function Dashboard() {
 
   useEffect(() => setPage(1), [filters, sortBy]);
 
+  useEffect(() => {
+    if (!statusMessage) return;
+    const timer = window.setTimeout(() => setStatusMessage(''), 2000);
+    return () => window.clearTimeout(timer);
+  }, [statusMessage]);
+
   const filteredApplications = useMemo(() => {
-    const source = usingMockData
-      ? applications.filter((a) => {
-        if (filters.status && a.status !== filters.status) return false;
-        const applied = new Date(a.appliedAt);
-        if (filters.dateFrom && applied < new Date(filters.dateFrom + 'T00:00:00.000Z')) return false;
-        if (filters.dateTo && applied > new Date(filters.dateTo + 'T23:59:59.999Z')) return false;
-        return true;
-      })
-      : applications;
+    const needle = searchTerm.trim().toLowerCase();
+    const source = applications.filter((a) => {
+      if (filters.status && a.status !== filters.status) return false;
+      if (!needle) return true;
+      const haystack = `${a.company} ${a.jobTitle} ${a.jobUrl} ${a.status}`.toLowerCase();
+      return haystack.includes(needle);
+    });
 
     return [...source].sort((a, b) => {
       if (sortBy === 'company_asc') return a.company.localeCompare(b.company);
@@ -476,17 +509,17 @@ export function Dashboard() {
       if (bRow == null) return -1;
       return sortBy === 'sheet_desc' ? bRow - aRow : aRow - bRow;
     });
-  }, [applications, usingMockData, filters, sortBy]);
+  }, [applications, filters, searchTerm, sortBy]);
 
   const total = filteredApplications.length;
   const interviewCount = useMemo(
-    () => filteredApplications.filter((a) => a.status === 'Interviewing').length,
+    () => filteredApplications.filter((a) => a.status === 'Interview').length,
     [filteredApplications]
   );
   const responseRate = useMemo(() => {
     if (!total) return 0;
     const responsive = filteredApplications.filter(
-      (a) => a.status === 'Interviewing' || a.status === 'Offer'
+      (a) => a.status === 'Interview' || a.status === 'Accepted'
     ).length;
     return Math.round((responsive / total) * 100);
   }, [filteredApplications, total]);
@@ -498,7 +531,7 @@ export function Dashboard() {
   }, [filteredApplications, page, pageSize]);
 
   const filteredEmpty = !loading && pagedApplications.length === 0;
-  const hasActiveFilters = Boolean(filters.status || filters.dateFrom || filters.dateTo);
+  const hasActiveFilters = Boolean(filters.status || searchTerm.trim());
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
@@ -569,7 +602,8 @@ export function Dashboard() {
   }
 
   function clearFilters() {
-    setFilters({ status: '', dateFrom: '', dateTo: '' });
+    setFilters({ status: '' });
+    setSearchTerm('');
   }
 
   async function handleStatusChange(id: string, status: ApplicationStatus) {
@@ -639,11 +673,11 @@ export function Dashboard() {
       </p>
 
       <div style={styles.filtersRow}>
-        <div>
+        <div style={styles.filterGroup}>
           <label style={styles.filterLabel} htmlFor="filterStatus">Status</label>
           <select
             id="filterStatus"
-            style={styles.filterInput}
+            style={styles.filterSelect}
             value={filters.status}
             onChange={(e) => setFilters((p) => ({ ...p, status: e.target.value }))}
           >
@@ -653,31 +687,22 @@ export function Dashboard() {
             ))}
           </select>
         </div>
-        <div>
-          <label style={styles.filterLabel} htmlFor="dateFrom">From</label>
+        <div style={styles.filterGroup}>
+          <label style={styles.filterLabel} htmlFor="search">Search</label>
           <input
-            id="dateFrom"
-            type="date"
-            style={styles.filterInput}
-            value={filters.dateFrom}
-            onChange={(e) => setFilters((p) => ({ ...p, dateFrom: e.target.value }))}
+            id="search"
+            type="text"
+            style={{ ...styles.filterInput, minWidth: 280 }}
+            value={searchTerm}
+            placeholder="Company, role, URL..."
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <div>
-          <label style={styles.filterLabel} htmlFor="dateTo">To</label>
-          <input
-            id="dateTo"
-            type="date"
-            style={styles.filterInput}
-            value={filters.dateTo}
-            onChange={(e) => setFilters((p) => ({ ...p, dateTo: e.target.value }))}
-          />
-        </div>
-        <div>
+        <div style={styles.filterGroup}>
           <label style={styles.filterLabel} htmlFor="pageSize">Rows</label>
           <select
             id="pageSize"
-            style={styles.filterInput}
+            style={styles.filterSelect}
             value={pageSize}
             onChange={(e) => setPageSize(Number(e.target.value))}
           >
@@ -686,11 +711,11 @@ export function Dashboard() {
             ))}
           </select>
         </div>
-        <div>
+        <div style={styles.filterGroup}>
           <label style={styles.filterLabel} htmlFor="sortBy">Sort</label>
           <select
             id="sortBy"
-            style={styles.filterInput}
+            style={styles.filterSelect}
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as SortKey)}
           >
@@ -709,7 +734,7 @@ export function Dashboard() {
         )}
       </div>
 
-      {statusMessage && <p style={{ fontSize: 13, color: 'var(--status-offer-text)', marginBottom: 8 }}>{statusMessage}</p>}
+      {statusMessage && <p style={styles.statusMessage}>{statusMessage}</p>}
       {errorMessage && <p style={{ fontSize: 13, color: 'var(--danger)', marginBottom: 8 }}>{errorMessage}</p>}
       {usingMockData && <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>Using sample data (API unavailable)</p>}
 
@@ -961,7 +986,7 @@ function ApplicationRow({
         <select
           aria-label={`Change status for ${app.company}`}
           value={app.status}
-          style={{ ...styles.statusSelect, background: badgeStyle.backgroundColor, color: badgeStyle.color }}
+          style={{ ...styles.statusSelect, backgroundColor: badgeStyle.backgroundColor, color: badgeStyle.color }}
           onChange={(e) => onStatusChange(e.target.value as ApplicationStatus)}
           disabled={isSaving || isDeleting}
         >
