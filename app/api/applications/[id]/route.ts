@@ -72,3 +72,51 @@ export async function PATCH(
     );
   }
 }
+
+export async function DELETE(
+  _request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await context.params;
+    const supabase = getSupabaseAdminClient();
+
+    const { data: existing, error: existingError } = await supabase
+      .from('applications')
+      .select('id')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (existingError) {
+      throw existingError;
+    }
+
+    if (!existing) {
+      return NextResponse.json(
+        {
+          error: 'Application not found'
+        },
+        { status: 404 }
+      );
+    }
+
+    const { error: deleteError } = await supabase.from('applications').delete().eq('id', id);
+
+    if (deleteError) {
+      throw deleteError;
+    }
+
+    return NextResponse.json({
+      deleted: true,
+      id
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: 'Failed to delete application',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 400 }
+    );
+  }
+}

@@ -52,6 +52,7 @@ export function Dashboard() {
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [savingIds, setSavingIds] = useState<Record<string, boolean>>({});
+  const [deletingIds, setDeletingIds] = useState<Record<string, boolean>>({});
 
   const total = applications.length;
 
@@ -140,6 +141,36 @@ export function Dashboard() {
     }
   }, [fetchApplications, resetMessages]);
 
+  const handleDeleteRow = useCallback(async (id: string) => {
+    const shouldDelete = window.confirm(
+      'Delete this application from dashboard (Supabase only)? This does not delete the Google Sheet row.'
+    );
+    if (!shouldDelete) {
+      return;
+    }
+
+    resetMessages();
+    setDeletingIds((prev) => ({ ...prev, [id]: true }));
+
+    try {
+      const response = await fetch(`/api/applications/${id}`, {
+        method: 'DELETE'
+      });
+
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.details || body.error || 'Failed to delete application');
+      }
+
+      setStatusMessage('Application deleted from dashboard (Supabase only).');
+      await fetchApplications();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setDeletingIds((prev) => ({ ...prev, [id]: false }));
+    }
+  }, [fetchApplications, resetMessages]);
+
   const rows = useMemo(
     () =>
       applications.map((app) => (
@@ -147,10 +178,12 @@ export function Dashboard() {
           key={`${app.id}-${app.updatedAt}`}
           app={app}
           isSaving={Boolean(savingIds[app.id])}
+          isDeleting={Boolean(deletingIds[app.id])}
           onSave={handleSaveRow}
+          onDelete={handleDeleteRow}
         />
       )),
-    [applications, handleSaveRow, savingIds]
+    [applications, deletingIds, handleDeleteRow, handleSaveRow, savingIds]
   );
 
   return (
@@ -269,6 +302,7 @@ export function Dashboard() {
 
         {statusMessage ? <p className="status-ok">{statusMessage}</p> : null}
         {errorMessage ? <p className="status-error">{errorMessage}</p> : null}
+        <p className="subtitle">Delete removes only Supabase record; Google Sheet history stays.</p>
 
         <div className="table-wrapper">
           <table>
@@ -306,11 +340,15 @@ export function Dashboard() {
 function ApplicationRow({
   app,
   onSave,
-  isSaving
+  onDelete,
+  isSaving,
+  isDeleting
 }: {
   app: Application;
   onSave: (id: string, payload: Partial<Application>) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
   isSaving: boolean;
+  isDeleting: boolean;
 }) {
   const [draft, setDraft] = useState({
     company: app.company,
@@ -363,14 +401,24 @@ function ApplicationRow({
       </td>
       <td>{app.sheetRowNumber ?? '-'}</td>
       <td>
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => onSave(app.id, draft)}
-          disabled={!dirty || isSaving}
-        >
-          {isSaving ? 'Saving...' : 'Save'}
-        </button>
+        <div className="inline-actions">
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => onSave(app.id, draft)}
+            disabled={!dirty || isSaving || isDeleting}
+          >
+            {isSaving ? 'Saving...' : 'Save'}
+          </button>
+          <button
+            type="button"
+            className="danger"
+            onClick={() => onDelete(app.id)}
+            disabled={isSaving || isDeleting}
+          >
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
       </td>
     </tr>
   );
