@@ -34,6 +34,7 @@ type SortKey =
   | 'company_desc';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
+const AUTO_REFRESH_MS = 30_000;
 
 const initialCreateState = {
   company: '',
@@ -72,6 +73,14 @@ function formatDate(input: string): string {
     month: 'short',
     day: 'numeric',
     year: 'numeric'
+  });
+}
+
+function formatRefreshTime(input: string | null): string {
+  if (!input) return 'Never';
+  return new Date(input).toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit'
   });
 }
 
@@ -127,6 +136,19 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: 12
+  },
+  btnSecondary: {
+    height: 32,
+    padding: '0 10px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    border: '1px solid var(--border)',
+    borderRadius: 6,
+    background: 'var(--surface)',
+    color: 'var(--text)',
+    fontSize: 13,
+    fontWeight: 500
   },
   btnPrimary: {
     height: 32,
@@ -394,6 +416,11 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-secondary)',
     fontSize: 13,
     cursor: 'pointer'
+  },
+  refreshMeta: {
+    fontSize: 12,
+    color: 'var(--text-secondary)',
+    marginBottom: 10
   }
 };
 
@@ -416,6 +443,8 @@ export function Dashboard() {
   const [pageSize, setPageSize] = useState(25);
   const [sortBy, setSortBy] = useState<SortKey>('sheet_desc');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
 
   const companyInputRef = useRef<HTMLInputElement>(null);
 
@@ -435,6 +464,7 @@ export function Dashboard() {
       if (!res.ok) throw new Error(body.details || body.error || 'Failed to fetch');
       setApplications(body.applications || []);
       setUsingMockData(false);
+      setLastRefreshedAt(new Date().toISOString());
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Unknown error');
       setApplications(MOCK_APPLICATIONS);
@@ -447,6 +477,14 @@ export function Dashboard() {
   useEffect(() => {
     fetchApplications();
   }, [fetchApplications]);
+
+  useEffect(() => {
+    if (!autoRefreshEnabled) return;
+    const timer = window.setInterval(() => {
+      fetchApplications();
+    }, AUTO_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [autoRefreshEnabled, fetchApplications]);
 
   useEffect(() => {
     const stored = localStorage.getItem('job-tracker-theme') as 'light' | 'dark' | null;
@@ -636,6 +674,25 @@ export function Dashboard() {
         <div style={styles.topBarRight}>
           <button
             type="button"
+            style={styles.btnSecondary}
+            onClick={() => fetchApplications()}
+            disabled={loading}
+          >
+            {loading ? 'Refreshing...' : 'Refresh'}
+          </button>
+          <button
+            type="button"
+            style={{
+              ...styles.btnSecondary,
+              borderColor: autoRefreshEnabled ? 'var(--accent)' : 'var(--border)',
+              color: autoRefreshEnabled ? 'var(--accent)' : 'var(--text)'
+            }}
+            onClick={() => setAutoRefreshEnabled((current) => !current)}
+          >
+            Auto-refresh: {autoRefreshEnabled ? 'On' : 'Off'}
+          </button>
+          <button
+            type="button"
             className="icon-btn"
             style={styles.iconBtn}
             onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
@@ -670,6 +727,10 @@ export function Dashboard() {
         <span style={styles.statsNum}>{interviewCount}</span> interviews
         {' · '}
         <span style={styles.statsNum}>{responseRate}%</span> response rate
+      </p>
+      <p style={styles.refreshMeta}>
+        Last refreshed: {formatRefreshTime(lastRefreshedAt)}
+        {autoRefreshEnabled ? ` · every ${AUTO_REFRESH_MS / 1000}s` : ''}
       </p>
 
       <div style={styles.filtersRow}>
