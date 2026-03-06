@@ -1,49 +1,303 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Job Tracker Capture</title>
-    <link rel="stylesheet" href="popup.css" />
-  </head>
-  <body>
-    <main>
-      <h1>Job Capture</h1>
-      <button id="autofillBtn" type="button">Autofill from Page</button>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Job Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+      --font-family: 'DM Sans', -apple-system, sans-serif;
+      --font-size-caption: 11px; --font-size-body: 13px; --font-size-section: 14px;
+      --font-weight-regular: 400; --font-weight-medium: 500; --font-weight-semibold: 600;
+      --letter-spacing-label: 0.05em;
+      --bg: #FAFAFA; --surface: #FFFFFF; --border: #E2E4E9; --border-subtle: #E5E7EB;
+      --text: #111827; --text-secondary: #6B7280; --accent: #2563EB; --accent-hover: #1D4ED8;
+      --accent-muted: rgba(37, 99, 235, 0.08); --danger: #DC2626;
+      --input-height: 36px; --input-border: #E2E4E9; --radius: 6px;
+    }
+    [data-theme='dark'] {
+      --bg: #111111; --surface: #1A1A1A; --border: #2A2A2A; --border-subtle: #2A2A2A;
+      --text: #E5E5E5; --text-secondary: #A3A3A3; --accent: #3B82F6; --accent-hover: #60A5FA;
+      --accent-muted: rgba(59, 130, 246, 0.12); --input-border: #2A2A2A;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      width: 380px;
+      min-height: 320px;
+      max-height: 520px;
+      font-family: var(--font-family);
+      font-size: var(--font-size-body);
+      font-weight: var(--font-weight-regular);
+      color: var(--text);
+      background: var(--bg);
+    }
+    .popup {
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+    }
+    .header {
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 var(--space-4);
+      border-bottom: 1px solid var(--border-subtle);
+      flex-shrink: 0;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .header-icon {
+      width: 20px;
+      height: 20px;
+      color: var(--accent);
+    }
+    .header-title {
+      font-size: var(--font-size-section);
+      font-weight: var(--font-weight-semibold);
+      margin: 0;
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .icon-btn {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border: none;
+      background: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      border-radius: var(--radius);
+    }
+    .icon-btn:hover {
+      color: var(--text);
+      background: var(--accent-muted);
+    }
+    .icon-btn svg { width: 16px; height: 16px; }
+    .content {
+      flex: 1;
+      padding: var(--space-4);
+      overflow-y: auto;
+    }
+    .autofill-wrap {
+      margin-bottom: var(--space-3);
+    }
+    .btn-autofill {
+      width: 100%;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      background: transparent;
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: var(--font-size-body);
+      font-weight: var(--font-weight-medium);
+      cursor: pointer;
+      transition: background 150ms ease;
+    }
+    .btn-autofill:hover {
+      background: var(--accent-muted);
+    }
+    .btn-autofill svg { width: 14px; height: 14px; }
+    .divider {
+      height: 1px;
+      background: var(--border-subtle);
+      margin: var(--space-2) 0 var(--space-3);
+    }
+    .form {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+    .field label {
+      display: block;
+      font-size: var(--font-size-caption);
+      font-weight: var(--font-weight-medium);
+      text-transform: uppercase;
+      letter-spacing: var(--letter-spacing-label);
+      color: var(--text-secondary);
+      margin-bottom: var(--space-1);
+    }
+    .field input,
+    .field select {
+      width: 100%;
+      height: var(--input-height);
+      border: 1px solid var(--input-border);
+      border-radius: var(--radius);
+      padding: 0 10px;
+      font-family: inherit;
+      font-size: var(--font-size-body);
+      color: var(--text);
+      background: var(--surface);
+    }
+    .field input:focus,
+    .field select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+    .field select {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236B7280' d='M2.5 4.5L6 8l3.5-3.5'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 32px;
+    }
+    .btn-save {
+      width: 100%;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+      border: none;
+      background: var(--accent);
+      color: white;
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: var(--font-size-body);
+      font-weight: var(--font-weight-medium);
+      cursor: pointer;
+      transition: background 150ms ease;
+      margin-top: var(--space-2);
+    }
+    .btn-save:hover:not(:disabled) {
+      background: var(--accent-hover);
+    }
+    .btn-save:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .btn-save .check { display: none; }
+    .btn-save.is-success .check { display: inline; }
+    .btn-save.is-success .label { display: none; }
+    .error-msg {
+      font-size: var(--font-size-caption);
+      color: var(--danger);
+      margin-top: var(--space-2);
+      min-height: 14px;
+    }
+    .settings-panel {
+      margin-top: var(--space-4);
+      padding-top: var(--space-4);
+      border-top: 1px solid var(--border-subtle);
+      display: none;
+    }
+    .settings-panel.is-open {
+      display: block;
+    }
+    .settings-panel .field { margin-bottom: var(--space-3); }
+    .btn-settings-save {
+      height: 32px;
+      padding: 0 var(--space-3);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: var(--font-size-body);
+      cursor: pointer;
+    }
+    .btn-settings-save:hover {
+      background: var(--accent-muted);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <div class="popup">
+    <header class="header">
+      <div class="header-left">
+        <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M4 7.5h16M7.5 4v3.5m9-3.5v3.5M6 20h12a2 2 0 0 0 2-2V9.5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2V18a2 2 0 0 0 2 2Z" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <h1 class="header-title">Job Tracker</h1>
+      </div>
+      <div class="header-actions">
+        <button type="button" class="icon-btn" id="settingsBtn" aria-label="Settings" title="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/>
+          </svg>
+        </button>
+        <button type="button" class="icon-btn" id="themeBtn" aria-label="Toggle theme" title="Toggle theme">
+          <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+          </svg>
+          <svg class="moon" style="display:none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+          </svg>
+        </button>
+      </div>
+    </header>
 
-      <form id="captureForm">
-        <label for="company">Company</label>
-        <input id="company" name="company" required />
+    <div class="content">
+      <div class="autofill-wrap">
+        <button type="button" id="autofillBtn" class="btn-autofill">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z"/>
+          </svg>
+          Autofill from Page
+        </button>
+      </div>
+      <div class="divider"></div>
 
-        <label for="jobTitle">Job Title</label>
-        <input id="jobTitle" name="jobTitle" required />
-
-        <label for="status">Status</label>
-        <select id="status" name="status" required>
-          <option value="Applied">Applied</option>
-          <option value="Interviewing">Interviewing</option>
-          <option value="Offer">Offer</option>
-          <option value="Rejected">Rejected</option>
-          <option value="Withdrawn">Withdrawn</option>
-        </select>
-
-        <label for="jobUrl">Job URL</label>
-        <input id="jobUrl" name="jobUrl" type="url" required />
-
-        <button id="submitBtn" type="submit">Save Application</button>
+      <form id="captureForm" class="form">
+        <div class="field">
+          <label for="company">Company</label>
+          <input id="company" name="company" placeholder="Acme, Inc." required />
+        </div>
+        <div class="field">
+          <label for="jobTitle">Job Title</label>
+          <input id="jobTitle" name="jobTitle" placeholder="Frontend Engineer" required />
+        </div>
+        <div class="field">
+          <label for="status">Status</label>
+          <select id="status" name="status" required>
+            <option value="Applied">Applied</option>
+            <option value="Interviewing">Interviewing</option>
+            <option value="Offer">Offer</option>
+            <option value="Rejected">Rejected</option>
+            <option value="Withdrawn">Withdrawn</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="jobUrl">Job URL</label>
+          <input id="jobUrl" name="jobUrl" type="url" placeholder="https://jobs.example.com/role" required />
+        </div>
+        <button id="submitBtn" type="submit" class="btn-save">
+          <span class="check" aria-hidden="true">✓</span>
+          <span class="label">Save Application</span>
+        </button>
+        <p id="errorMsg" class="error-msg" role="alert"></p>
       </form>
 
-      <details>
-        <summary>Settings</summary>
-        <label for="apiBaseUrl">API Base URL</label>
-        <input id="apiBaseUrl" placeholder="https://your-app.vercel.app" />
+      <section id="settingsPanel" class="settings-panel" aria-hidden="true">
+        <div class="field">
+          <label for="apiBaseUrl">API Base URL</label>
+          <input id="apiBaseUrl" placeholder="https://your-app.vercel.app" />
+        </div>
+        <button id="saveSettingsBtn" class="btn-settings-save" type="button">Save Settings</button>
+      </section>
+    </div>
+  </div>
 
-        <button id="saveSettingsBtn" type="button">Save Settings</button>
-      </details>
-
-      <p id="statusMessage" class="status"></p>
-    </main>
-
-    <script src="popup.js"></script>
-  </body>
+  <script src="popup.js"></script>
+</body>
 </html>

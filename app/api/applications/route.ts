@@ -42,6 +42,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('applications')
       .select('*')
+      .order('sheet_row_number', { ascending: false, nullsFirst: false })
       .order('applied_at', { ascending: false });
 
     if (status) {

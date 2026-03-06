@@ -1,6 +1,13 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 import { APPLICATION_STATUSES, type ApplicationStatus } from '@/lib/types';
 
 type Application = {
@@ -20,6 +27,16 @@ type FilterState = {
   dateTo: string;
 };
 
+type SortKey =
+  | 'sheet_desc'
+  | 'sheet_asc'
+  | 'applied_desc'
+  | 'applied_asc'
+  | 'company_asc'
+  | 'company_desc';
+
+const PAGE_SIZE_OPTIONS = [25, 50, 100];
+
 const initialCreateState = {
   company: '',
   jobTitle: '',
@@ -27,22 +44,333 @@ const initialCreateState = {
   jobUrl: ''
 };
 
+const MOCK_APPLICATIONS: Application[] = [
+  { id: 'demo-1', company: 'Linear', jobTitle: 'Product Designer', status: 'Interviewing', jobUrl: 'https://jobs.linear.app/product-designer', appliedAt: '2026-02-24T13:05:00.000Z', updatedAt: '2026-02-24T13:05:00.000Z', sheetRowNumber: 102 },
+  { id: 'demo-2', company: 'Notion', jobTitle: 'Growth Marketing Manager', status: 'Applied', jobUrl: 'https://www.notion.so/careers/growth-marketing-manager', appliedAt: '2026-02-22T15:32:00.000Z', updatedAt: '2026-02-22T15:32:00.000Z', sheetRowNumber: 103 },
+  { id: 'demo-3', company: 'Stripe', jobTitle: 'Frontend Engineer, Dashboard', status: 'Rejected', jobUrl: 'https://stripe.com/jobs/listing/frontend-engineer-dashboard', appliedAt: '2026-02-17T09:12:00.000Z', updatedAt: '2026-02-19T08:41:00.000Z', sheetRowNumber: 104 },
+  { id: 'demo-4', company: 'Mercury', jobTitle: 'Senior Product Manager', status: 'Applied', jobUrl: 'https://mercury.com/jobs/senior-product-manager', appliedAt: '2026-02-15T20:07:00.000Z', updatedAt: '2026-02-15T20:07:00.000Z', sheetRowNumber: 105 },
+  { id: 'demo-5', company: 'Ramp', jobTitle: 'Technical Program Manager', status: 'Interviewing', jobUrl: 'https://ramp.com/careers/technical-program-manager', appliedAt: '2026-02-11T14:30:00.000Z', updatedAt: '2026-02-18T11:22:00.000Z', sheetRowNumber: 106 },
+  { id: 'demo-6', company: 'Vercel', jobTitle: 'Developer Relations Engineer', status: 'Offer', jobUrl: 'https://vercel.com/careers/developer-relations-engineer', appliedAt: '2026-02-05T16:10:00.000Z', updatedAt: '2026-02-27T11:15:00.000Z', sheetRowNumber: 107 },
+  { id: 'demo-7', company: 'Figma', jobTitle: 'Design Systems Engineer', status: 'Applied', jobUrl: 'https://www.figma.com/careers/design-systems-engineer', appliedAt: '2026-02-02T10:45:00.000Z', updatedAt: '2026-02-02T10:45:00.000Z', sheetRowNumber: 108 },
+  { id: 'demo-8', company: 'OpenAI', jobTitle: 'Product Operations Lead', status: 'Withdrawn', jobUrl: 'https://openai.com/careers/product-operations-lead', appliedAt: '2026-01-31T11:05:00.000Z', updatedAt: '2026-02-03T08:32:00.000Z', sheetRowNumber: 109 },
+  { id: 'demo-9', company: 'Anthropic', jobTitle: 'Operations Analyst', status: 'Applied', jobUrl: 'https://www.anthropic.com/careers/operations-analyst', appliedAt: '2026-01-28T18:22:00.000Z', updatedAt: '2026-01-28T18:22:00.000Z', sheetRowNumber: 110 },
+  { id: 'demo-10', company: 'Airtable', jobTitle: 'Customer Success Manager', status: 'Interviewing', jobUrl: 'https://airtable.com/careers/customer-success-manager', appliedAt: '2026-01-24T12:15:00.000Z', updatedAt: '2026-02-01T10:45:00.000Z', sheetRowNumber: 111 },
+  { id: 'demo-11', company: 'Figma', jobTitle: 'Staff Engineer', status: 'Rejected', jobUrl: 'https://www.figma.com/careers/staff-engineer', appliedAt: '2026-01-20T09:00:00.000Z', updatedAt: '2026-01-25T14:20:00.000Z', sheetRowNumber: 112 },
+  { id: 'demo-12', company: 'Plaid', jobTitle: 'Backend Engineer', status: 'Applied', jobUrl: 'https://plaid.com/careers/backend-engineer', appliedAt: '2026-01-18T11:30:00.000Z', updatedAt: '2026-01-18T11:30:00.000Z', sheetRowNumber: 113 },
+  { id: 'demo-13', company: 'Retool', jobTitle: 'Solutions Engineer', status: 'Interviewing', jobUrl: 'https://retool.com/careers/solutions-engineer', appliedAt: '2026-01-15T16:45:00.000Z', updatedAt: '2026-01-22T10:00:00.000Z', sheetRowNumber: 114 },
+  { id: 'demo-14', company: 'Loom', jobTitle: 'Product Designer', status: 'Offer', jobUrl: 'https://loom.com/careers/product-designer', appliedAt: '2026-01-10T08:20:00.000Z', updatedAt: '2026-02-28T09:30:00.000Z', sheetRowNumber: 115 },
+  { id: 'demo-15', company: 'Coda', jobTitle: 'Full Stack Engineer', status: 'Withdrawn', jobUrl: 'https://coda.io/careers/full-stack-engineer', appliedAt: '2026-01-05T14:00:00.000Z', updatedAt: '2026-01-12T11:15:00.000Z', sheetRowNumber: 116 }
+];
+
 function buildQuery(filters: FilterState) {
   const params = new URLSearchParams();
   if (filters.status) params.set('status', filters.status);
   if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
   if (filters.dateTo) params.set('dateTo', filters.dateTo);
-  const query = params.toString();
-  return query ? `?${query}` : '';
+  const q = params.toString();
+  return q ? `?${q}` : '';
 }
 
 function formatDate(input: string): string {
-  return new Date(input).toLocaleDateString();
+  return new Date(input).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
 }
+
+function truncateUrl(input: string, max = 25): string {
+  if (input.length <= max) return input;
+  return input.slice(0, max - 3) + '...';
+}
+
+function statusBadgeStyle(status: ApplicationStatus): React.CSSProperties {
+  const map: Record<ApplicationStatus, React.CSSProperties> = {
+    Applied: { backgroundColor: 'var(--status-applied-bg)', color: 'var(--status-applied-text)' },
+    Interviewing: { backgroundColor: 'var(--status-interview-bg)', color: 'var(--status-interview-text)' },
+    Offer: { backgroundColor: 'var(--status-offer-bg)', color: 'var(--status-offer-text)' },
+    Rejected: { backgroundColor: 'var(--status-rejected-bg)', color: 'var(--status-rejected-text)' },
+    Withdrawn: { backgroundColor: 'var(--status-rejected-bg)', color: 'var(--status-rejected-text)' }
+  };
+  return map[status] || { backgroundColor: 'var(--status-rejected-bg)', color: 'var(--status-rejected-text)' };
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  shell: {
+    maxWidth: 1200,
+    margin: '0 auto',
+    padding: 24,
+    minHeight: '100vh'
+  },
+  topBar: {
+    height: 56,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '0 0',
+    borderBottom: '1px solid var(--border-subtle)',
+    marginBottom: 24
+  },
+  topBarLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8
+  },
+  topBarTitle: {
+    fontSize: 16,
+    fontWeight: 600,
+    margin: 0,
+    letterSpacing: '-0.01em'
+  },
+  topBarBadge: {
+    fontSize: 13,
+    color: 'var(--text-secondary)',
+    fontWeight: 400
+  },
+  topBarRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12
+  },
+  btnPrimary: {
+    height: 32,
+    padding: '0 12px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    border: 'none',
+    borderRadius: 6,
+    background: 'var(--accent)',
+    color: 'white',
+    fontSize: 13,
+    fontWeight: 500
+  },
+  iconBtn: {
+    width: 32,
+    height: 32,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: 'none',
+    background: 'none',
+    color: 'var(--text-secondary)',
+    borderRadius: 6,
+    cursor: 'pointer'
+  },
+  statsRow: {
+    fontSize: 13,
+    color: 'var(--text-secondary)',
+    marginBottom: 16
+  },
+  statsNum: {
+    color: 'var(--text)',
+    fontWeight: 500
+  },
+  filtersRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12
+  },
+  filterLabel: {
+    fontSize: 11,
+    fontWeight: 500,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.05em',
+    color: 'var(--text-secondary)',
+    marginBottom: 4
+  },
+  filterInput: {
+    height: 32,
+    padding: '0 8px',
+    fontSize: 12,
+    border: '1px solid var(--input-border)',
+    borderRadius: 6,
+    background: 'var(--surface)',
+    color: 'var(--text)',
+    minWidth: 120
+  },
+  clearBtn: {
+    background: 'none',
+    border: 'none',
+    color: 'var(--text-secondary)',
+    fontSize: 12,
+    cursor: 'pointer',
+    padding: '4px 0'
+  },
+  tableWrap: {
+    border: '1px solid var(--border)',
+    borderRadius: 6,
+    background: 'var(--surface)',
+    overflow: 'hidden'
+  },
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    tableLayout: 'fixed'
+  },
+  th: {
+    padding: '10px 12px',
+    textAlign: 'left',
+    fontSize: 12,
+    fontWeight: 600,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.05em',
+    color: 'var(--text-secondary)',
+    background: 'var(--table-header-bg)',
+    borderBottom: '1px solid var(--border-subtle)',
+    position: 'sticky',
+    top: 0,
+    zIndex: 1
+  },
+  td: {
+    padding: '10px 12px',
+    fontSize: 13,
+    borderBottom: '1px solid var(--border-row)',
+    verticalAlign: 'middle',
+    height: 44
+  },
+  tdMuted: {
+    color: 'var(--text-secondary)',
+    fontSize: 12
+  },
+  rowHover: {
+    background: 'var(--table-row-hover)'
+  },
+  statusSelect: {
+    height: 28,
+    minWidth: 116,
+    padding: '0 8px',
+    fontSize: 12,
+    borderRadius: 9999,
+    border: '1px solid var(--input-border)',
+    background: 'var(--surface)'
+  },
+  urlLink: {
+    color: 'var(--accent)',
+    textDecoration: 'none',
+    fontSize: 12,
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    maxWidth: '100%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis'
+  },
+  actionsRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8
+  },
+  actionBtn: {
+    height: 28,
+    padding: '0 8px',
+    border: '1px solid var(--border)',
+    borderRadius: 6,
+    background: 'var(--surface)',
+    color: 'var(--text)',
+    fontSize: 12
+  },
+  actionBtnDanger: {
+    border: '1px solid rgba(220, 38, 38, 0.35)',
+    color: 'var(--danger)'
+  },
+  pagination: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 12,
+    padding: '12px 16px',
+    borderTop: '1px solid var(--border-subtle)',
+    fontSize: 12,
+    color: 'var(--text-secondary)'
+  },
+  paginationBtn: {
+    background: 'none',
+    border: 'none',
+    color: 'var(--text-secondary)',
+    fontSize: 12,
+    cursor: 'pointer',
+    padding: '4px 0'
+  },
+  emptyState: {
+    textAlign: 'center' as const,
+    padding: 48,
+    color: 'var(--text-secondary)',
+    fontSize: 13
+  },
+  skeleton: {
+    height: 14,
+    borderRadius: 4,
+    background: 'var(--border-row)',
+    animation: 'shimmer 1.5s ease-in-out infinite'
+  },
+  modalBackdrop: {
+    position: 'fixed' as const,
+    inset: 0,
+    background: 'rgba(0,0,0,0.4)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 100
+  },
+  modal: {
+    width: 480,
+    maxWidth: 'calc(100vw - 48px)',
+    background: 'var(--surface)',
+    border: '1px solid var(--border)',
+    borderRadius: 6,
+    padding: 24
+  },
+  modalTitle: {
+    fontSize: 14,
+    fontWeight: 600,
+    margin: '0 0 20px'
+  },
+  formField: {
+    marginBottom: 12
+  },
+  formLabel: {
+    display: 'block',
+    fontSize: 11,
+    fontWeight: 500,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.05em',
+    color: 'var(--text-secondary)',
+    marginBottom: 4
+  },
+  formInput: {
+    width: '100%',
+    height: 36,
+    padding: '0 10px',
+    fontSize: 13,
+    border: '1px solid var(--input-border)',
+    borderRadius: 6,
+    background: 'var(--surface)',
+    color: 'var(--text)'
+  },
+  modalActions: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 24
+  },
+  btnCancel: {
+    height: 36,
+    padding: '0 12px',
+    border: 'none',
+    background: 'none',
+    color: 'var(--text-secondary)',
+    fontSize: 13,
+    cursor: 'pointer'
+  }
+};
 
 export function Dashboard() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [createForm, setCreateForm] = useState(initialCreateState);
+  const [editForm, setEditForm] = useState<Application | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     status: '',
     dateFrom: '',
@@ -51,28 +379,37 @@ export function Dashboard() {
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [usingMockData, setUsingMockData] = useState(false);
   const [savingIds, setSavingIds] = useState<Record<string, boolean>>({});
   const [deletingIds, setDeletingIds] = useState<Record<string, boolean>>({});
+  const [addOpen, setAddOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [sortBy, setSortBy] = useState<SortKey>('sheet_desc');
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
-  const total = applications.length;
+  const companyInputRef = useRef<HTMLInputElement>(null);
+
+  const resetMessages = useCallback(() => {
+    setStatusMessage('');
+    setErrorMessage('');
+  }, []);
 
   const fetchApplications = useCallback(async () => {
     setLoading(true);
     setErrorMessage('');
-
     try {
-      const response = await fetch(`/api/applications${buildQuery(filters)}`, {
+      const res = await fetch(`/api/applications${buildQuery(filters)}`, {
         cache: 'no-store'
       });
-      const body = await response.json();
-
-      if (!response.ok) {
-        throw new Error(body.details || body.error || 'Failed to fetch applications');
-      }
-
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.details || body.error || 'Failed to fetch');
       setApplications(body.applications || []);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Unknown error');
+      setUsingMockData(false);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Unknown error');
+      setApplications(MOCK_APPLICATIONS);
+      setUsingMockData(true);
     } finally {
       setLoading(false);
     }
@@ -82,17 +419,92 @@ export function Dashboard() {
     fetchApplications();
   }, [fetchApplications]);
 
-  const resetMessages = useCallback(() => {
-    setStatusMessage('');
-    setErrorMessage('');
+  useEffect(() => {
+    const stored = localStorage.getItem('job-tracker-theme') as 'light' | 'dark' | null;
+    if (stored) setTheme(stored);
   }, []);
 
-  async function handleCreate(event: FormEvent) {
-    event.preventDefault();
-    resetMessages();
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme === 'dark' ? 'dark' : '');
+    localStorage.setItem('job-tracker-theme', theme);
+  }, [theme]);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'n' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return;
+        e.preventDefault();
+        setAddOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  useEffect(() => {
+    if (addOpen || editForm) {
+      requestAnimationFrame(() => companyInputRef.current?.focus());
+    }
+  }, [addOpen, editForm]);
+
+  useEffect(() => setPage(1), [filters, sortBy]);
+
+  const filteredApplications = useMemo(() => {
+    const source = usingMockData
+      ? applications.filter((a) => {
+        if (filters.status && a.status !== filters.status) return false;
+        const applied = new Date(a.appliedAt);
+        if (filters.dateFrom && applied < new Date(filters.dateFrom + 'T00:00:00.000Z')) return false;
+        if (filters.dateTo && applied > new Date(filters.dateTo + 'T23:59:59.999Z')) return false;
+        return true;
+      })
+      : applications;
+
+    return [...source].sort((a, b) => {
+      if (sortBy === 'company_asc') return a.company.localeCompare(b.company);
+      if (sortBy === 'company_desc') return b.company.localeCompare(a.company);
+      if (sortBy === 'applied_desc') return new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime();
+      if (sortBy === 'applied_asc') return new Date(a.appliedAt).getTime() - new Date(b.appliedAt).getTime();
+
+      const aRow = a.sheetRowNumber;
+      const bRow = b.sheetRowNumber;
+      if (aRow == null && bRow == null) {
+        return new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime();
+      }
+      if (aRow == null) return 1;
+      if (bRow == null) return -1;
+      return sortBy === 'sheet_desc' ? bRow - aRow : aRow - bRow;
+    });
+  }, [applications, usingMockData, filters, sortBy]);
+
+  const total = filteredApplications.length;
+  const interviewCount = useMemo(
+    () => filteredApplications.filter((a) => a.status === 'Interviewing').length,
+    [filteredApplications]
+  );
+  const responseRate = useMemo(() => {
+    if (!total) return 0;
+    const responsive = filteredApplications.filter(
+      (a) => a.status === 'Interviewing' || a.status === 'Offer'
+    ).length;
+    return Math.round((responsive / total) * 100);
+  }, [filteredApplications, total]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const pagedApplications = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredApplications.slice(start, start + pageSize);
+  }, [filteredApplications, page, pageSize]);
+
+  const filteredEmpty = !loading && pagedApplications.length === 0;
+  const hasActiveFilters = Boolean(filters.status || filters.dateFrom || filters.dateTo);
+
+  async function handleCreate(e: FormEvent) {
+    e.preventDefault();
+    resetMessages();
     try {
-      const response = await fetch('/api/applications', {
+      const res = await fetch('/api/applications', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -100,290 +512,458 @@ export function Dashboard() {
         },
         body: JSON.stringify(createForm)
       });
-
-      const body = await response.json();
-      if (!response.ok) {
-        throw new Error(body.details || body.error || 'Failed to create application');
-      }
-
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.details || body.error || 'Failed to create');
       setCreateForm(initialCreateState);
       setStatusMessage('Application created and synced to Google Sheets.');
+      setAddOpen(false);
       await fetchApplications();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Unknown error');
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Unknown error');
     }
   }
 
-  const handleSaveRow = useCallback(async (id: string, payload: Partial<Application>) => {
+  async function handleEdit(e: FormEvent) {
+    e.preventDefault();
+    if (!editForm) return;
     resetMessages();
-    setSavingIds((prev) => ({ ...prev, [id]: true }));
-
+    setSavingIds((p) => ({ ...p, [editForm.id]: true }));
     try {
-      const response = await fetch(`/api/applications/${id}`, {
+      const res = await fetch(`/api/applications/${editForm.id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company: editForm.company,
+          jobTitle: editForm.jobTitle,
+          status: editForm.status,
+          jobUrl: editForm.jobUrl
+        })
       });
-
-      const body = await response.json();
-      if (!response.ok) {
-        throw new Error(body.details || body.error || 'Failed to update application');
-      }
-
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.details || body.error || 'Failed to update');
       setStatusMessage('Application updated and synced to Google Sheets.');
+      setEditForm(null);
       await fetchApplications();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Unknown error');
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Unknown error');
     } finally {
-      setSavingIds((prev) => ({ ...prev, [id]: false }));
+      setSavingIds((p) => ({ ...p, [editForm.id]: false }));
     }
-  }, [fetchApplications, resetMessages]);
+  }
 
-  const handleDeleteRow = useCallback(async (id: string) => {
-    const shouldDelete = window.confirm(
-      'Delete this application from dashboard (Supabase only)? This does not delete the Google Sheet row.'
-    );
-    if (!shouldDelete) {
-      return;
-    }
-
+  async function handleDelete(id: string) {
+    if (!window.confirm('Delete this application? This removes it from the dashboard (Supabase) but not from Google Sheets.')) return;
     resetMessages();
-    setDeletingIds((prev) => ({ ...prev, [id]: true }));
-
+    setDeletingIds((p) => ({ ...p, [id]: true }));
     try {
-      const response = await fetch(`/api/applications/${id}`, {
-        method: 'DELETE'
-      });
-
-      const body = await response.json();
-      if (!response.ok) {
-        throw new Error(body.details || body.error || 'Failed to delete application');
-      }
-
-      setStatusMessage('Application deleted from dashboard (Supabase only).');
+      const res = await fetch(`/api/applications/${id}`, { method: 'DELETE' });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.details || body.error || 'Failed to delete');
+      setStatusMessage('Application deleted.');
       await fetchApplications();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Unknown error');
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Unknown error');
     } finally {
-      setDeletingIds((prev) => ({ ...prev, [id]: false }));
+      setDeletingIds((p) => ({ ...p, [id]: false }));
     }
-  }, [fetchApplications, resetMessages]);
+  }
 
-  const rows = useMemo(
-    () =>
-      applications.map((app) => (
-        <ApplicationRow
-          key={`${app.id}-${app.updatedAt}`}
-          app={app}
-          isSaving={Boolean(savingIds[app.id])}
-          isDeleting={Boolean(deletingIds[app.id])}
-          onSave={handleSaveRow}
-          onDelete={handleDeleteRow}
-        />
-      )),
-    [applications, deletingIds, handleDeleteRow, handleSaveRow, savingIds]
-  );
+  function clearFilters() {
+    setFilters({ status: '', dateFrom: '', dateTo: '' });
+  }
+
+  async function handleStatusChange(id: string, status: ApplicationStatus) {
+    resetMessages();
+    setSavingIds((p) => ({ ...p, [id]: true }));
+    try {
+      const res = await fetch(`/api/applications/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.details || body.error || 'Failed to update status');
+      setStatusMessage(`Status updated to ${status}.`);
+      await fetchApplications();
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setSavingIds((p) => ({ ...p, [id]: false }));
+    }
+  }
 
   return (
-    <>
-      <section className="card">
-        <h2>Add Application</h2>
-        <form onSubmit={handleCreate} className="grid two">
-          <div>
-            <label htmlFor="company">Company</label>
-            <input
-              id="company"
-              value={createForm.company}
-              onChange={(event) =>
-                setCreateForm((prev) => ({ ...prev, company: event.target.value }))
-              }
-              required
-            />
-          </div>
-          <div>
-            <label htmlFor="jobTitle">Job Title</label>
-            <input
-              id="jobTitle"
-              value={createForm.jobTitle}
-              onChange={(event) =>
-                setCreateForm((prev) => ({ ...prev, jobTitle: event.target.value }))
-              }
-              required
-            />
-          </div>
-          <div>
-            <label htmlFor="status">Status</label>
-            <select
-              id="status"
-              value={createForm.status}
-              onChange={(event) =>
-                setCreateForm((prev) => ({
-                  ...prev,
-                  status: event.target.value as ApplicationStatus
-                }))
-              }
-              required
-            >
-              {APPLICATION_STATUSES.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="jobUrl">Job URL</label>
-            <input
-              id="jobUrl"
-              type="url"
-              value={createForm.jobUrl}
-              onChange={(event) =>
-                setCreateForm((prev) => ({ ...prev, jobUrl: event.target.value }))
-              }
-              required
-            />
-          </div>
-          <div>
-            <button type="submit">Save Application</button>
-          </div>
-        </form>
-      </section>
+    <div style={styles.shell}>
+      <header style={styles.topBar}>
+        <div style={styles.topBarLeft}>
+          <h1 style={styles.topBarTitle}>Job Tracker</h1>
+          <span style={styles.topBarBadge}>({total})</span>
+        </div>
+        <div style={styles.topBarRight}>
+          <button
+            type="button"
+            className="icon-btn"
+            style={styles.iconBtn}
+            onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+            aria-label="Toggle theme"
+          >
+            {theme === 'light' ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+              </svg>
+            )}
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            style={styles.btnPrimary}
+            onClick={() => setAddOpen(true)}
+          >
+            <span>+</span>
+            New Application
+          </button>
+        </div>
+      </header>
 
-      <section className="card">
-        <h2>Applications ({total})</h2>
-        <div className="grid four">
-          <div>
-            <label htmlFor="filterStatus">Status Filter</label>
-            <select
-              id="filterStatus"
-              value={filters.status}
-              onChange={(event) =>
-                setFilters((prev) => ({ ...prev, status: event.target.value }))
-              }
+      <p style={styles.statsRow}>
+        <span style={styles.statsNum}>{total}</span> applied
+        {' · '}
+        <span style={styles.statsNum}>{interviewCount}</span> interviews
+        {' · '}
+        <span style={styles.statsNum}>{responseRate}%</span> response rate
+      </p>
+
+      <div style={styles.filtersRow}>
+        <div>
+          <label style={styles.filterLabel} htmlFor="filterStatus">Status</label>
+          <select
+            id="filterStatus"
+            style={styles.filterInput}
+            value={filters.status}
+            onChange={(e) => setFilters((p) => ({ ...p, status: e.target.value }))}
+          >
+            <option value="">All statuses</option>
+            {APPLICATION_STATUSES.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label style={styles.filterLabel} htmlFor="dateFrom">From</label>
+          <input
+            id="dateFrom"
+            type="date"
+            style={styles.filterInput}
+            value={filters.dateFrom}
+            onChange={(e) => setFilters((p) => ({ ...p, dateFrom: e.target.value }))}
+          />
+        </div>
+        <div>
+          <label style={styles.filterLabel} htmlFor="dateTo">To</label>
+          <input
+            id="dateTo"
+            type="date"
+            style={styles.filterInput}
+            value={filters.dateTo}
+            onChange={(e) => setFilters((p) => ({ ...p, dateTo: e.target.value }))}
+          />
+        </div>
+        <div>
+          <label style={styles.filterLabel} htmlFor="pageSize">Rows</label>
+          <select
+            id="pageSize"
+            style={styles.filterInput}
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+          >
+            {PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>{n} / page</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label style={styles.filterLabel} htmlFor="sortBy">Sort</label>
+          <select
+            id="sortBy"
+            style={styles.filterInput}
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as SortKey)}
+          >
+            <option value="sheet_desc">Sheet row (newest first)</option>
+            <option value="sheet_asc">Sheet row (oldest first)</option>
+            <option value="applied_desc">Applied date (newest first)</option>
+            <option value="applied_asc">Applied date (oldest first)</option>
+            <option value="company_asc">Company (A-Z)</option>
+            <option value="company_desc">Company (Z-A)</option>
+          </select>
+        </div>
+        {hasActiveFilters && (
+          <button type="button" style={styles.clearBtn} onClick={clearFilters}>
+            Clear
+          </button>
+        )}
+      </div>
+
+      {statusMessage && <p style={{ fontSize: 13, color: 'var(--status-offer-text)', marginBottom: 8 }}>{statusMessage}</p>}
+      {errorMessage && <p style={{ fontSize: 13, color: 'var(--danger)', marginBottom: 8 }}>{errorMessage}</p>}
+      {usingMockData && <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>Using sample data (API unavailable)</p>}
+
+      <div style={styles.tableWrap}>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={{ ...styles.th, width: '11%' }}>Applied</th>
+              <th style={{ ...styles.th, width: '18%' }}>Company</th>
+              <th style={{ ...styles.th, width: '20%' }}>Title</th>
+              <th style={{ ...styles.th, width: '16%' }}>Status</th>
+              <th style={{ ...styles.th, width: '19%' }}>Job URL</th>
+              <th style={{ ...styles.th, width: '16%' }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <tr key={`sk-${i}`}>
+                  <td style={styles.td}><span style={styles.skeleton} /></td>
+                  <td style={styles.td}><span style={styles.skeleton} /></td>
+                  <td style={styles.td}><span style={styles.skeleton} /></td>
+                  <td style={styles.td}><span style={styles.skeleton} /></td>
+                  <td style={styles.td}><span style={styles.skeleton} /></td>
+                  <td style={styles.td}><span style={styles.skeleton} /></td>
+                </tr>
+              ))
+            ) : filteredEmpty ? (
+              <tr>
+                <td colSpan={6} style={styles.emptyState}>
+                  No applications match your filters.
+                  <br />
+                  <button type="button" style={styles.clearBtn} onClick={clearFilters}>
+                    Clear filters
+                  </button>
+                </td>
+              </tr>
+            ) : (
+              pagedApplications.map((app) => (
+                <ApplicationRow
+                  key={app.id}
+                  app={app}
+                  isSaving={Boolean(savingIds[app.id])}
+                  isDeleting={Boolean(deletingIds[app.id])}
+                  onStatusChange={(status) => handleStatusChange(app.id, status)}
+                  onEdit={() => setEditForm({ ...app })}
+                  onDelete={() => handleDelete(app.id)}
+                />
+              ))
+            )}
+          </tbody>
+        </table>
+        {!filteredEmpty && (
+          <div style={styles.pagination}>
+            <button
+              type="button"
+              style={styles.paginationBtn}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
             >
-              <option value="">All</option>
-              {APPLICATION_STATUSES.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="dateFrom">Date From</label>
-            <input
-              id="dateFrom"
-              type="date"
-              value={filters.dateFrom}
-              onChange={(event) =>
-                setFilters((prev) => ({ ...prev, dateFrom: event.target.value }))
-              }
-            />
-          </div>
-          <div>
-            <label htmlFor="dateTo">Date To</label>
-            <input
-              id="dateTo"
-              type="date"
-              value={filters.dateTo}
-              onChange={(event) =>
-                setFilters((prev) => ({ ...prev, dateTo: event.target.value }))
-              }
-            />
-          </div>
-          <div className="inline-actions" style={{ alignItems: 'flex-end' }}>
-            <button type="button" className="secondary" onClick={fetchApplications}>
-              Apply Filters
+              ← Previous
+            </button>
+            <span>
+              Page {page} of {totalPages}
+            </span>
+            <button
+              type="button"
+              style={styles.paginationBtn}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+            >
+              Next →
             </button>
           </div>
-        </div>
+        )}
+      </div>
 
-        {statusMessage ? <p className="status-ok">{statusMessage}</p> : null}
-        {errorMessage ? <p className="status-error">{errorMessage}</p> : null}
-        <p className="subtitle">Delete removes only Supabase record; Google Sheet history stays.</p>
-
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Applied</th>
-                <th>Company</th>
-                <th>Title</th>
-                <th>Status</th>
-                <th>Job URL</th>
-                <th>Sheet Row</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={7}>Loading...</td>
-                </tr>
-              ) : rows.length > 0 ? (
-                rows
-              ) : (
-                <tr>
-                  <td colSpan={7}>No applications found.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {addOpen && (
+        <div
+          style={styles.modalBackdrop}
+          onClick={(e) => e.target === e.currentTarget && setAddOpen(false)}
+        >
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <h2 style={styles.modalTitle}>New Application</h2>
+            <form onSubmit={handleCreate}>
+              <div style={styles.formField}>
+                <label style={styles.formLabel} htmlFor="new-company">Company</label>
+                <input
+                  ref={companyInputRef}
+                  id="new-company"
+                  style={styles.formInput}
+                  value={createForm.company}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, company: e.target.value }))}
+                  required
+                />
+              </div>
+              <div style={styles.formField}>
+                <label style={styles.formLabel} htmlFor="new-title">Job Title</label>
+                <input
+                  id="new-title"
+                  style={styles.formInput}
+                  value={createForm.jobTitle}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, jobTitle: e.target.value }))}
+                  required
+                />
+              </div>
+              <div style={styles.formField}>
+                <label style={styles.formLabel} htmlFor="new-status">Status</label>
+                <select
+                  id="new-status"
+                  style={styles.formInput}
+                  value={createForm.status}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, status: e.target.value as ApplicationStatus }))}
+                  required
+                >
+                  {APPLICATION_STATUSES.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={styles.formField}>
+                <label style={styles.formLabel} htmlFor="new-url">Job URL</label>
+                <input
+                  id="new-url"
+                  type="url"
+                  style={styles.formInput}
+                  value={createForm.jobUrl}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, jobUrl: e.target.value }))}
+                  required
+                />
+              </div>
+              <div style={styles.modalActions}>
+                <button type="button" style={styles.btnCancel} onClick={() => setAddOpen(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary" style={styles.btnPrimary}>
+                  Save
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-      </section>
-    </>
+      )}
+
+      {editForm && (
+        <div
+          style={styles.modalBackdrop}
+          onClick={(e) => e.target === e.currentTarget && setEditForm(null)}
+        >
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <h2 style={styles.modalTitle}>Edit Application</h2>
+            <form onSubmit={handleEdit}>
+              <div style={styles.formField}>
+                <label style={styles.formLabel} htmlFor="edit-company">Company</label>
+                <input
+                  ref={companyInputRef}
+                  id="edit-company"
+                  style={styles.formInput}
+                  value={editForm.company}
+                  onChange={(e) => setEditForm((p) => p ? { ...p, company: e.target.value } : null)}
+                  required
+                />
+              </div>
+              <div style={styles.formField}>
+                <label style={styles.formLabel} htmlFor="edit-title">Job Title</label>
+                <input
+                  id="edit-title"
+                  style={styles.formInput}
+                  value={editForm.jobTitle}
+                  onChange={(e) => setEditForm((p) => p ? { ...p, jobTitle: e.target.value } : null)}
+                  required
+                />
+              </div>
+              <div style={styles.formField}>
+                <label style={styles.formLabel} htmlFor="edit-status">Status</label>
+                <select
+                  id="edit-status"
+                  style={styles.formInput}
+                  value={editForm.status}
+                  onChange={(e) => setEditForm((p) => p ? { ...p, status: e.target.value as ApplicationStatus } : null)}
+                  required
+                >
+                  {APPLICATION_STATUSES.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={styles.formField}>
+                <label style={styles.formLabel} htmlFor="edit-url">Job URL</label>
+                <input
+                  id="edit-url"
+                  type="url"
+                  style={styles.formInput}
+                  value={editForm.jobUrl}
+                  onChange={(e) => setEditForm((p) => p ? { ...p, jobUrl: e.target.value } : null)}
+                  required
+                />
+              </div>
+              <div style={styles.modalActions}>
+                <button type="button" style={styles.btnCancel} onClick={() => setEditForm(null)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary" style={styles.btnPrimary} disabled={savingIds[editForm.id]}>
+                  {savingIds[editForm.id] ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
   );
 }
 
 function ApplicationRow({
   app,
-  onSave,
-  onDelete,
   isSaving,
-  isDeleting
+  isDeleting,
+  onStatusChange,
+  onEdit,
+  onDelete
 }: {
   app: Application;
-  onSave: (id: string, payload: Partial<Application>) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
   isSaving: boolean;
   isDeleting: boolean;
+  onStatusChange: (status: ApplicationStatus) => void;
+  onEdit: () => void;
+  onDelete: () => void;
 }) {
-  const [draft, setDraft] = useState({
-    company: app.company,
-    jobTitle: app.jobTitle,
-    status: app.status,
-    jobUrl: app.jobUrl
-  });
-
-  const dirty =
-    draft.company !== app.company ||
-    draft.jobTitle !== app.jobTitle ||
-    draft.status !== app.status ||
-    draft.jobUrl !== app.jobUrl;
+  const badgeStyle = statusBadgeStyle(app.status);
 
   return (
-    <tr>
-      <td>{formatDate(app.appliedAt)}</td>
-      <td>
-        <input
-          value={draft.company}
-          onChange={(event) => setDraft((prev) => ({ ...prev, company: event.target.value }))}
-        />
-      </td>
-      <td>
-        <input
-          value={draft.jobTitle}
-          onChange={(event) => setDraft((prev) => ({ ...prev, jobTitle: event.target.value }))}
-        />
-      </td>
-      <td>
+    <tr
+      style={{
+        background: 'transparent'
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = 'var(--table-row-hover)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'transparent';
+      }}
+    >
+      <td style={{ ...styles.td, ...styles.tdMuted }}>{formatDate(app.appliedAt)}</td>
+      <td style={styles.td}>{app.company}</td>
+      <td style={styles.td}>{app.jobTitle}</td>
+      <td style={styles.td}>
         <select
-          value={draft.status}
-          onChange={(event) =>
-            setDraft((prev) => ({ ...prev, status: event.target.value as ApplicationStatus }))
-          }
+          aria-label={`Change status for ${app.company}`}
+          value={app.status}
+          style={{ ...styles.statusSelect, background: badgeStyle.backgroundColor, color: badgeStyle.color }}
+          onChange={(e) => onStatusChange(e.target.value as ApplicationStatus)}
+          disabled={isSaving || isDeleting}
         >
           {APPLICATION_STATUSES.map((status) => (
             <option key={status} value={status}>
@@ -392,28 +972,32 @@ function ApplicationRow({
           ))}
         </select>
       </td>
-      <td>
-        <input
-          type="url"
-          value={draft.jobUrl}
-          onChange={(event) => setDraft((prev) => ({ ...prev, jobUrl: event.target.value }))}
-        />
+      <td style={styles.td}>
+        <a
+          href={app.jobUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={styles.urlLink}
+          title={app.jobUrl}
+        >
+          {truncateUrl(app.jobUrl)}
+          <span style={{ fontSize: 10 }}>↗</span>
+        </a>
       </td>
-      <td>{app.sheetRowNumber ?? '-'}</td>
-      <td>
-        <div className="inline-actions">
+      <td style={styles.td}>
+        <div style={styles.actionsRow}>
           <button
             type="button"
-            className="secondary"
-            onClick={() => onSave(app.id, draft)}
-            disabled={!dirty || isSaving || isDeleting}
+            style={styles.actionBtn}
+            onClick={onEdit}
+            disabled={isSaving || isDeleting}
           >
-            {isSaving ? 'Saving...' : 'Save'}
+            Edit
           </button>
           <button
             type="button"
-            className="danger"
-            onClick={() => onDelete(app.id)}
+            style={{ ...styles.actionBtn, ...styles.actionBtnDanger }}
+            onClick={onDelete}
             disabled={isSaving || isDeleting}
           >
             {isDeleting ? 'Deleting...' : 'Delete'}
