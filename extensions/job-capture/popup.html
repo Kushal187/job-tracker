@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Job Tracker Capture</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Job Capture</h1>
+      <button id="autofillBtn" type="button">Autofill from Page</button>
+
+      <form id="captureForm">
+        <label for="company">Company</label>
+        <input id="company" name="company" required />
+
+        <label for="jobTitle">Job Title</label>
+        <input id="jobTitle" name="jobTitle" required />
+
+        <label for="status">Status</label>
+        <select id="status" name="status" required>
+          <option value="Applied">Applied</option>
+          <option value="Interviewing">Interviewing</option>
+          <option value="Offer">Offer</option>
+          <option value="Rejected">Rejected</option>
+          <option value="Withdrawn">Withdrawn</option>
+        </select>
+
+        <label for="jobUrl">Job URL</label>
+        <input id="jobUrl" name="jobUrl" type="url" required />
+
+        <button id="submitBtn" type="submit">Save Application</button>
+      </form>
+
+      <details>
+        <summary>Settings</summary>
+        <label for="apiBaseUrl">API Base URL</label>
+        <input id="apiBaseUrl" placeholder="https://your-app.vercel.app" />
+
+        <button id="saveSettingsBtn" type="button">Save Settings</button>
+      </details>
+
+      <p id="statusMessage" class="status"></p>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

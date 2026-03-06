@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Job Tracker Capture",
+  "version": "1.0.0",
+  "description": "Capture job applications and save to your dashboard + sheet",
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
