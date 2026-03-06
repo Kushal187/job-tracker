@@ -67,3 +67,37 @@ export async function updateApplicationOnSheet(app: ApplicationRecord): Promise<
     }
   });
 }
+
+export async function deleteApplicationFromSheet(sheetRowNumber: number): Promise<void> {
+  const { sheetId, sheetTab } = getSheetsEnv();
+  const sheets = await getSheetsClient();
+
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId: sheetId
+  });
+
+  const targetSheet = meta.data.sheets?.find((sheet) => sheet.properties?.title === sheetTab);
+  const targetSheetId = targetSheet?.properties?.sheetId;
+
+  if (targetSheetId == null) {
+    throw new Error(`Sheet tab "${sheetTab}" not found`);
+  }
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: sheetId,
+    requestBody: {
+      requests: [
+        {
+          deleteDimension: {
+            range: {
+              sheetId: targetSheetId,
+              dimension: 'ROWS',
+              startIndex: sheetRowNumber - 1,
+              endIndex: sheetRowNumber
+            }
+          }
+        }
+      ]
+    }
+  });
+}

@@ -552,7 +552,7 @@ export function Dashboard() {
   }
 
   async function handleDelete(id: string) {
-    if (!window.confirm('Delete this application? This removes it from the dashboard (Supabase) but not from Google Sheets.')) return;
+    if (!window.confirm('Delete this application? This removes it from the dashboard and Google Sheets.')) return;
     resetMessages();
     setDeletingIds((p) => ({ ...p, [id]: true }));
     try {
