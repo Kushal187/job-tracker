@@ -38,7 +38,6 @@ type FetchApplicationsOptions = {
 };
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
-const AUTO_REFRESH_MS = 30_000;
 
 const initialCreateState = {
   company: '',
@@ -80,14 +79,6 @@ function formatDate(input: string): string {
   });
 }
 
-function formatRefreshTime(input: string | null): string {
-  if (!input) return 'Never';
-  return new Date(input).toLocaleTimeString(undefined, {
-    hour: 'numeric',
-    minute: '2-digit'
-  });
-}
-
 function truncateUrl(input: string, max = 25): string {
   if (input.length <= max) return input;
   return input.slice(0, max - 3) + '...';
@@ -108,14 +99,16 @@ const styles: Record<string, React.CSSProperties> = {
   shell: {
     maxWidth: 1200,
     margin: '0 auto',
-    padding: 24,
+    padding: '24px 16px',
     minHeight: '100vh'
   },
   topBar: {
-    height: 56,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    rowGap: 12,
+    minHeight: 56,
     padding: '0 0',
     borderBottom: '1px solid var(--border-subtle)',
     marginBottom: 24
@@ -139,6 +132,8 @@ const styles: Record<string, React.CSSProperties> = {
   topBarRight: {
     display: 'flex',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
     gap: 12
   },
   btnSecondary: {
@@ -199,7 +194,9 @@ const styles: Record<string, React.CSSProperties> = {
   filterGroup: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 4
+    gap: 4,
+    flex: '1 1 160px',
+    minWidth: 0
   },
   filterLabel: {
     fontSize: 11,
@@ -210,6 +207,7 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 4
   },
   filterInput: {
+    width: '100%',
     height: 36,
     padding: '0 10px',
     fontSize: 13,
@@ -217,9 +215,10 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     background: 'var(--surface)',
     color: 'var(--text)',
-    minWidth: 120
+    minWidth: 0
   },
   filterSelect: {
+    width: '100%',
     height: 36,
     padding: '0 36px 0 10px',
     fontSize: 13,
@@ -254,10 +253,13 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid var(--border)',
     borderRadius: 6,
     background: 'var(--surface)',
-    overflow: 'hidden'
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    WebkitOverflowScrolling: 'touch'
   },
   table: {
     width: '100%',
+    minWidth: 760,
     borderCollapse: 'collapse',
     tableLayout: 'fixed'
   },
@@ -317,6 +319,7 @@ const styles: Record<string, React.CSSProperties> = {
   actionsRow: {
     display: 'flex',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8
   },
   actionBtn: {
@@ -336,6 +339,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'flex-end',
+    flexWrap: 'wrap',
     gap: 12,
     padding: '12px 16px',
     borderTop: '1px solid var(--border-subtle)',
@@ -373,11 +377,11 @@ const styles: Record<string, React.CSSProperties> = {
   },
   modal: {
     width: 480,
-    maxWidth: 'calc(100vw - 48px)',
+    maxWidth: 'calc(100vw - 24px)',
     background: 'var(--surface)',
     border: '1px solid var(--border)',
     borderRadius: 6,
-    padding: 24
+    padding: 20
   },
   modalTitle: {
     fontSize: 14,
@@ -409,6 +413,7 @@ const styles: Record<string, React.CSSProperties> = {
   modalActions: {
     display: 'flex',
     justifyContent: 'flex-end',
+    flexWrap: 'wrap',
     gap: 8,
     marginTop: 24
   },
@@ -421,11 +426,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     cursor: 'pointer'
   },
-  refreshMeta: {
-    fontSize: 12,
-    color: 'var(--text-secondary)',
-    marginBottom: 10
-  }
 };
 
 export function Dashboard() {
@@ -447,8 +447,6 @@ export function Dashboard() {
   const [pageSize, setPageSize] = useState(25);
   const [sortBy, setSortBy] = useState<SortKey>('sheet_desc');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
-  const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
 
   const companyInputRef = useRef<HTMLInputElement>(null);
 
@@ -468,7 +466,6 @@ export function Dashboard() {
       if (!res.ok) throw new Error(body.details || body.error || 'Failed to fetch');
       setApplications(body.applications || []);
       setUsingMockData(false);
-      setLastRefreshedAt(new Date().toISOString());
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Unknown error');
       setApplications(MOCK_APPLICATIONS);
@@ -481,14 +478,6 @@ export function Dashboard() {
   useEffect(() => {
     fetchApplications();
   }, [fetchApplications]);
-
-  useEffect(() => {
-    if (!autoRefreshEnabled) return;
-    const timer = window.setInterval(() => {
-      fetchApplications({ showLoading: false });
-    }, AUTO_REFRESH_MS);
-    return () => window.clearInterval(timer);
-  }, [autoRefreshEnabled, fetchApplications]);
 
   useEffect(() => {
     const stored = localStorage.getItem('job-tracker-theme') as 'light' | 'dark' | null;
@@ -677,7 +666,6 @@ export function Dashboard() {
           current.map((app) => (app.id === id ? body.application : app))
         );
       }
-      setLastRefreshedAt(new Date().toISOString());
     } catch (err) {
       setApplications((current) =>
         current.map((app) => (app.id === id ? previousApplication : app))
@@ -703,17 +691,6 @@ export function Dashboard() {
             disabled={loading}
           >
             {loading ? 'Refreshing...' : 'Refresh'}
-          </button>
-          <button
-            type="button"
-            style={{
-              ...styles.btnSecondary,
-              borderColor: autoRefreshEnabled ? 'var(--accent)' : 'var(--border)',
-              color: autoRefreshEnabled ? 'var(--accent)' : 'var(--text)'
-            }}
-            onClick={() => setAutoRefreshEnabled((current) => !current)}
-          >
-            Auto-refresh: {autoRefreshEnabled ? 'On' : 'Off'}
           </button>
           <button
             type="button"
@@ -752,10 +729,6 @@ export function Dashboard() {
         {' · '}
         <span style={styles.statsNum}>{responseRate}%</span> response rate
       </p>
-      <p style={styles.refreshMeta}>
-        Last refreshed: {formatRefreshTime(lastRefreshedAt)}
-        {autoRefreshEnabled ? ` · every ${AUTO_REFRESH_MS / 1000}s` : ''}
-      </p>
 
       <div style={styles.filtersRow}>
         <div style={styles.filterGroup}>
@@ -777,7 +750,7 @@ export function Dashboard() {
           <input
             id="search"
             type="text"
-            style={{ ...styles.filterInput, minWidth: 280 }}
+            style={styles.filterInput}
             value={searchTerm}
             placeholder="Company, role, URL..."
             onChange={(e) => setSearchTerm(e.target.value)}
