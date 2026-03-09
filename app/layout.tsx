@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Job Tracker',
+  title: 'Applyr',
   description: 'Simple job application tracker with Google Sheets backup'
 };
 

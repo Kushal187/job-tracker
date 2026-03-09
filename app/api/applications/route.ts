@@ -1,21 +1,27 @@
 import { randomUUID } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { appendApplicationToSheet } from '@/lib/sheets';
+import { requireAuthenticatedUser } from '@/lib/auth';
+import { syncCreatedApplication } from '@/lib/sheet-sync';
 import { getSupabaseAdminClient } from '@/lib/supabase';
 import type { ApplicationRecord } from '@/lib/types';
+import { getUserSettingsRecord } from '@/lib/user-settings';
 import { validateCreatePayload } from '@/lib/validation';
 
 function toDbInsert(payload: {
+  userId: string;
   company: string;
   jobTitle: string;
   status: string;
   jobUrl: string;
+  requestId: string;
 }) {
   return {
+    user_id: payload.userId,
     company: payload.company,
     job_title: payload.jobTitle,
     status: payload.status,
-    job_url: payload.jobUrl
+    job_url: payload.jobUrl,
+    request_id: payload.requestId
   };
 }
 
@@ -34,6 +40,9 @@ function toApiApplication(record: ApplicationRecord) {
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAuthenticatedUser(request);
+    if ('response' in auth) return auth.response;
+
     const supabase = getSupabaseAdminClient();
     const status = request.nextUrl.searchParams.get('status');
     const dateFrom = request.nextUrl.searchParams.get('dateFrom');
@@ -42,6 +51,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('applications')
       .select('*')
+      .eq('user_id', auth.user.id)
       .order('sheet_row_number', { ascending: false, nullsFirst: false })
       .order('applied_at', { ascending: false });
 
@@ -78,6 +88,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAuthenticatedUser(request);
+    if ('response' in auth) return auth.response;
+
     const payload = validateCreatePayload(await request.json());
     const requestId = request.headers.get('x-idempotency-key') || randomUUID();
     const supabase = getSupabaseAdminClient();
@@ -85,6 +98,7 @@ export async function POST(request: NextRequest) {
     const { data: existing, error: existingError } = await supabase
       .from('applications')
       .select('*')
+      .eq('user_id', auth.user.id)
       .eq('request_id', requestId)
       .maybeSingle();
 
@@ -100,10 +114,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const insertPayload = {
-      ...toDbInsert(payload),
-      request_id: requestId
-    };
+    const insertPayload = toDbInsert({
+      userId: auth.user.id,
+      company: payload.company,
+      jobTitle: payload.jobTitle,
+      status: payload.status,
+      jobUrl: payload.jobUrl,
+      requestId
+    });
 
     const { data, error } = await supabase
       .from('applications')
@@ -116,6 +134,7 @@ export async function POST(request: NextRequest) {
         const { data: retryExisting } = await supabase
           .from('applications')
           .select('*')
+          .eq('user_id', auth.user.id)
           .eq('request_id', requestId)
           .maybeSingle();
 
@@ -133,23 +152,13 @@ export async function POST(request: NextRequest) {
     const created = data as ApplicationRecord;
 
     try {
-      const rowNumber = await appendApplicationToSheet(created);
-
-      const { data: synced, error: updateError } = await supabase
-        .from('applications')
-        .update({ sheet_row_number: rowNumber })
-        .eq('id', created.id)
-        .select('*')
-        .single();
-
-      if (updateError) {
-        throw updateError;
-      }
+      const settings = await getUserSettingsRecord(supabase, auth.user.id);
+      const synced = await syncCreatedApplication(supabase, created, settings);
 
       return NextResponse.json({
         created: true,
         deduped: false,
-        application: toApiApplication(synced as ApplicationRecord)
+        application: toApiApplication(synced)
       });
     } catch (sheetError) {
       return NextResponse.json(

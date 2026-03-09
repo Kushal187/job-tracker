@@ -1,12 +1,12 @@
-# Job Tracker
+# Applyr
 
-Minimal personal job tracker with:
-- Next.js dashboard (Vercel)
-- Supabase database (source of truth)
-- Auto backup sync to Google Sheets on every create/update
-- Chrome extension popup with autofill + edit-before-submit
+Multi-user job application tracker with:
+- Next.js dashboard
+- Supabase Auth for sign up and sign in
+- Supabase database for user-owned application data
+- Optional per-user Google Sheets sync using a server-side service account
 
-## 1) Setup
+## Setup
 
 1. Install dependencies:
 ```bash
@@ -19,63 +19,42 @@ cp .env.example .env.local
 ```
 
 3. Fill `.env.local`:
+- `NEXT_PUBLIC_APP_URL`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `GOOGLE_SHEET_ID`
-- `GOOGLE_SHEET_TAB` (defaults to `Applications`)
-- `GOOGLE_SERVICE_ACCOUNT_JSON` (single-line JSON)
+- `GOOGLE_SERVICE_ACCOUNT_JSON` only if you want Google Sheets sync
+- `GOOGLE_SHEET_TAB` optional default tab name for newly configured user sheets
 
-4. In Google Sheets, add/share:
-- Share your sheet with the service-account email inside `GOOGLE_SERVICE_ACCOUNT_JSON`
-- Give it Editor access
+## Database
 
-## 2) Database
-
-Run migration in Supabase SQL editor:
+Run these migrations in Supabase SQL editor:
 - `supabase/migrations/20260305_create_applications.sql`
+- `supabase/migrations/20260306_update_application_statuses.sql`
+- `supabase/migrations/20260309_multi_user_auth_and_settings.sql`
 
-## 3) Run locally (optional)
+The multi-user migration backfills existing rows to the earliest created auth user, which should be your account if this project only had one owner before signup was added.
 
-```bash
-npm run dev
-```
+## Auth
 
-Open `http://localhost:3000`.
+- Open signup is enabled in the UI through Supabase email/password auth.
+- If your Supabase project requires email confirmation, new users will need to confirm before signing in.
+- Each user only sees and mutates their own applications and settings.
 
-## 4) Deploy to Vercel
+## Google Sheets Sync
 
-1. Import this repo into Vercel
-2. Add the same env vars in Vercel project settings
-3. Deploy
+Google Sheets is optional.
 
-## 5) Chrome Extension
+To make it available:
+1. Add `GOOGLE_SERVICE_ACCOUNT_JSON` to the app environment.
+2. Sign in to the app.
+3. Open the Google Sheets Sync settings card.
+4. Paste your own spreadsheet ID.
+5. Share that spreadsheet with the service-account email shown in the UI.
+6. Enable sync and run `Sync all`.
 
-1. Open `chrome://extensions`
-2. Enable Developer mode
-3. Click `Load unpacked`
-4. Select `extensions/job-capture`
-5. Open extension popup -> Settings:
-- `API Base URL`: your Vercel URL (or `http://localhost:3000`)
-
-Use `Autofill from Page`, adjust fields, then submit.
-
-## API
-
-### `POST /api/applications`
-Input:
-```json
-{ "company": "Acme", "jobTitle": "Software Engineer", "status": "Applied", "jobUrl": "https://example.com/job/1" }
-```
-
-### `PATCH /api/applications/:id`
-Input (any subset):
-```json
-{ "status": "Interview", "company": "Acme", "jobTitle": "SWE", "jobUrl": "https://example.com/job/1" }
-```
-
-## Sheet Columns
-
-The app writes these columns (A:G):
+The app writes these columns to the chosen sheet tab:
 1. `application_id`
 2. `applied_at`
 3. `company`
@@ -83,3 +62,30 @@ The app writes these columns (A:G):
 5. `status`
 6. `job_url`
 7. `updated_at`
+
+## Run Locally
+
+```bash
+npm run dev
+```
+
+Open `http://localhost:3000`.
+
+## Deploy
+
+1. Import the repo into Vercel
+2. Add the same environment variables in project settings
+3. Deploy
+
+## Chrome Extension
+
+The extension lives in `extensions/job-capture`.
+
+To use it:
+1. Load the folder as an unpacked Chrome extension.
+2. Open the extension popup and, if you are running locally, save `API Base URL`.
+3. Sign in with the same email/password you use in the web dashboard.
+4. Capture a job page and save it.
+
+The popup now stores its own Supabase session locally and sends the same bearer token the dashboard uses for protected API routes.
+Published/store builds are locked to `https://kushal-job-tracker.vercel.app` and do not allow changing the API origin.

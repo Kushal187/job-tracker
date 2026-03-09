@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuthenticatedUser } from '@/lib/auth';
+import {
+  syncDeletedApplication,
+  syncUpdatedApplication
+} from '@/lib/sheet-sync';
 import { getSupabaseAdminClient } from '@/lib/supabase';
-import { deleteApplicationFromSheet, updateApplicationOnSheet } from '@/lib/sheets';
 import type { ApplicationRecord } from '@/lib/types';
+import { getUserSettingsRecord } from '@/lib/user-settings';
 import { validateUpdatePayload } from '@/lib/validation';
 
 function toApiApplication(record: ApplicationRecord) {
@@ -22,6 +27,9 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAuthenticatedUser(request);
+    if ('response' in auth) return auth.response;
+
     const { id } = await context.params;
     const payload = validateUpdatePayload(await request.json());
     const supabase = getSupabaseAdminClient();
@@ -36,6 +44,7 @@ export async function PATCH(
       .from('applications')
       .update(updatePayload)
       .eq('id', id)
+      .eq('user_id', auth.user.id)
       .select('*')
       .single();
 
@@ -46,7 +55,13 @@ export async function PATCH(
     const updated = data as ApplicationRecord;
 
     try {
-      await updateApplicationOnSheet(updated);
+      const settings = await getUserSettingsRecord(supabase, auth.user.id);
+      const synced = await syncUpdatedApplication(supabase, updated, settings);
+
+      return NextResponse.json({
+        updated: true,
+        application: toApiApplication(synced)
+      });
     } catch (sheetError) {
       return NextResponse.json(
         {
@@ -57,11 +72,6 @@ export async function PATCH(
         { status: 502 }
       );
     }
-
-    return NextResponse.json({
-      updated: true,
-      application: toApiApplication(updated)
-    });
   } catch (error) {
     return NextResponse.json(
       {
@@ -74,17 +84,21 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAuthenticatedUser(request);
+    if ('response' in auth) return auth.response;
+
     const { id } = await context.params;
     const supabase = getSupabaseAdminClient();
 
     const { data: existing, error: existingError } = await supabase
       .from('applications')
-      .select('id, sheet_row_number')
+      .select('*')
       .eq('id', id)
+      .eq('user_id', auth.user.id)
       .maybeSingle();
 
     if (existingError) {
@@ -100,70 +114,41 @@ export async function DELETE(
       );
     }
 
-    const existingRecord = existing as Pick<ApplicationRecord, 'id' | 'sheet_row_number'>;
+    const existingRecord = existing as ApplicationRecord;
 
-    if (existingRecord.sheet_row_number) {
-      try {
-        await deleteApplicationFromSheet(existingRecord.sheet_row_number);
-      } catch (sheetError) {
-        return NextResponse.json(
-          {
-            error: 'Failed to delete application from Google Sheets',
-            applicationId: existingRecord.id,
-            details: sheetError instanceof Error ? sheetError.message : 'Unknown error'
-          },
-          { status: 502 }
-        );
-      }
-    }
-
-    const { error: deleteError } = await supabase.from('applications').delete().eq('id', id);
+    const { error: deleteError } = await supabase
+      .from('applications')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', auth.user.id);
 
     if (deleteError) {
       throw deleteError;
     }
 
-    if (existingRecord.sheet_row_number) {
-      const { data: shiftedRows, error: shiftedRowsError } = await supabase
-        .from('applications')
-        .select('id, sheet_row_number')
-        .gt('sheet_row_number', existingRecord.sheet_row_number);
+    try {
+      const settings = await getUserSettingsRecord(supabase, auth.user.id);
+      await syncDeletedApplication(
+        supabase,
+        auth.user.id,
+        existingRecord.sheet_row_number,
+        settings
+      );
 
-      if (shiftedRowsError) {
-        return NextResponse.json(
-          {
-            error: 'Application deleted, but failed to reindex sheet row numbers',
-            applicationId: existingRecord.id,
-            details: shiftedRowsError.message
-          },
-          { status: 502 }
-        );
-      }
-
-      for (const row of (shiftedRows || []) as Array<Pick<ApplicationRecord, 'id' | 'sheet_row_number'>>) {
-        if (!row.sheet_row_number) continue;
-        const { error: updateRowError } = await supabase
-          .from('applications')
-          .update({ sheet_row_number: row.sheet_row_number - 1 })
-          .eq('id', row.id);
-
-        if (updateRowError) {
-          return NextResponse.json(
-            {
-              error: 'Application deleted, but failed to reindex sheet row numbers',
-              applicationId: existingRecord.id,
-              details: updateRowError.message
-            },
-            { status: 502 }
-          );
-        }
-      }
+      return NextResponse.json({
+        deleted: true,
+        id
+      });
+    } catch (sheetError) {
+      return NextResponse.json(
+        {
+          error: 'Application deleted, but failed to sync the connected sheet',
+          applicationId: existingRecord.id,
+          details: sheetError instanceof Error ? sheetError.message : 'Unknown error'
+        },
+        { status: 502 }
+      );
     }
-
-    return NextResponse.json({
-      deleted: true,
-      id
-    });
   } catch (error) {
     return NextResponse.json(
       {

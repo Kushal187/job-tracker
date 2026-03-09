@@ -1,10 +1,32 @@
 (function () {
+  const PROD_API_BASE_URL = 'https://kushal-job-tracker.vercel.app';
+  const manifest = chrome.runtime.getManifest();
+  const isStoreBuild = Boolean(manifest.update_url);
+
+  const sessionBtn = document.getElementById('sessionBtn');
+  const sessionLabel = document.getElementById('sessionLabel');
+  const authForm = document.getElementById('authForm');
+  const authEmailInput = document.getElementById('authEmail');
+  const authPasswordInput = document.getElementById('authPassword');
+  const signInBtn = document.getElementById('signInBtn');
+  const signOutBtn = document.getElementById('signOutBtn');
+  const authStatus = document.getElementById('authStatus');
+  const authHint = document.getElementById('authHint');
+  const authMsg = document.getElementById('authMsg');
+  const sessionMeta = document.getElementById('sessionMeta');
+  const statusTitle = document.getElementById('statusTitle');
+  const statusText = document.getElementById('statusText');
+  const statusActionBtn = document.getElementById('statusActionBtn');
   const formEl = document.getElementById('captureForm');
   const autofillBtn = document.getElementById('autofillBtn');
   const submitBtn = document.getElementById('submitBtn');
   const saveSettingsBtn = document.getElementById('saveSettingsBtn');
   const settingsBtn = document.getElementById('settingsBtn');
   const settingsPanel = document.getElementById('settingsPanel');
+  const connectionCopy = document.getElementById('connectionCopy');
+  const connectionField = document.getElementById('connectionField');
+  const connectionValue = document.getElementById('connectionValue');
+  const connectionHelper = document.getElementById('connectionHelper');
   const themeBtn = document.getElementById('themeBtn');
   const errorMsg = document.getElementById('errorMsg');
 
@@ -14,12 +36,55 @@
   const statusInput = document.getElementById('status');
   const apiBaseUrlInput = document.getElementById('apiBaseUrl');
   const DRAFT_STORAGE_KEY = 'captureDraft';
+  const SESSION_STORAGE_KEY = 'supabaseSession';
 
   const sunIcon = themeBtn.querySelector('.sun');
   const moonIcon = themeBtn.querySelector('.moon');
 
+  function setAuthMessage(msg, isError = false) {
+    authMsg.textContent = msg || '';
+    authMsg.dataset.state = msg ? (isError ? 'error' : 'success') : '';
+  }
+
   function setError(msg) {
     errorMsg.textContent = msg || '';
+  }
+
+  function setElementVisible(element, visible) {
+    element.hidden = !visible;
+    element.classList.toggle('visually-hidden', !visible);
+  }
+
+  function normalizeBaseUrl(value) {
+    return normalizeText(value).replace(/\/+$/, '');
+  }
+
+  async function resolveApiBaseUrl() {
+    if (isStoreBuild) {
+      return PROD_API_BASE_URL;
+    }
+
+    const stored = await chrome.storage.sync.get(['apiBaseUrl']);
+    return normalizeBaseUrl(stored.apiBaseUrl || PROD_API_BASE_URL);
+  }
+
+  function getSessionDisplayLabel(session) {
+    const email = normalizeText(session?.userEmail);
+    if (!email) return 'Connected';
+
+    const localPart = email.split('@')[0] || email;
+    return localPart.length <= 12 ? localPart : `${localPart.slice(0, 11)}...`;
+  }
+
+  function formatSessionExpiry(session) {
+    if (!session?.expiresAt) return '';
+
+    return new Date(session.expiresAt * 1000).toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
   }
 
   function setTheme(isDark) {
@@ -45,18 +110,279 @@
     settingsPanel.setAttribute('aria-hidden', !open);
   });
 
+  function openSettingsPanel() {
+    settingsPanel.classList.add('is-open');
+    settingsPanel.setAttribute('aria-hidden', 'false');
+  }
+
   async function loadSettings() {
-    const stored = await chrome.storage.sync.get(['apiBaseUrl']);
-    apiBaseUrlInput.value = (stored.apiBaseUrl || '').trim();
+    const resolvedApiBaseUrl = await resolveApiBaseUrl();
+    apiBaseUrlInput.value = resolvedApiBaseUrl;
+
+    if (isStoreBuild) {
+      connectionCopy.textContent = 'This store build is locked to the official Applyr app.';
+      connectionValue.textContent = PROD_API_BASE_URL;
+      setElementVisible(connectionField, false);
+      setElementVisible(connectionValue, true);
+      setElementVisible(connectionHelper, false);
+      setElementVisible(saveSettingsBtn, false);
+      return;
+    }
+
+    connectionCopy.textContent = 'Choose which app this extension talks to.';
+    setElementVisible(connectionField, true);
+    setElementVisible(connectionValue, false);
+    setElementVisible(connectionHelper, true);
+    setElementVisible(saveSettingsBtn, true);
   }
 
   async function saveSettings() {
-    await chrome.storage.sync.set({ apiBaseUrl: apiBaseUrlInput.value.trim() });
+    if (isStoreBuild) {
+      apiBaseUrlInput.value = PROD_API_BASE_URL;
+      setAuthMessage('This build is locked to the official Applyr app.');
+      return;
+    }
+
+    const previousApiBaseUrl = normalizeBaseUrl(
+      (await chrome.storage.sync.get(['apiBaseUrl'])).apiBaseUrl || ''
+    );
+    const nextApiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value);
+    apiBaseUrlInput.value = nextApiBaseUrl;
+
+    await chrome.storage.sync.set({ apiBaseUrl: nextApiBaseUrl });
+
+    if (nextApiBaseUrl !== previousApiBaseUrl) {
+      await clearSession();
+      authPasswordInput.value = '';
+      setAuthMessage(nextApiBaseUrl ? 'Settings saved. Sign in again.' : 'API Base URL cleared.');
+    } else {
+      setAuthMessage('Settings saved.');
+    }
+
     setError('');
+    updateAuthUi(await getStoredSession());
   }
 
   function normalizeText(v) {
     return typeof v === 'string' ? v.trim() : '';
+  }
+
+  function getSessionExpiresAt(sessionLike) {
+    const expiresAt = Number(sessionLike?.expires_at ?? sessionLike?.expiresAt);
+    if (Number.isFinite(expiresAt) && expiresAt > 0) return expiresAt;
+
+    const expiresIn = Number(sessionLike?.expires_in);
+    if (Number.isFinite(expiresIn) && expiresIn > 0) {
+      return Math.floor(Date.now() / 1000) + expiresIn;
+    }
+
+    return 0;
+  }
+
+  function toStoredSession(sessionLike) {
+    const accessToken = normalizeText(sessionLike?.access_token ?? sessionLike?.accessToken);
+    const refreshToken = normalizeText(sessionLike?.refresh_token ?? sessionLike?.refreshToken);
+    const expiresAt = getSessionExpiresAt(sessionLike);
+
+    if (!accessToken || !refreshToken || !expiresAt) {
+      return null;
+    }
+
+    return {
+      accessToken,
+      refreshToken,
+      expiresAt,
+      userEmail: normalizeText(sessionLike?.user?.email ?? sessionLike?.userEmail),
+      userId: normalizeText(sessionLike?.user?.id ?? sessionLike?.userId)
+    };
+  }
+
+  async function getStoredSession() {
+    const stored = await chrome.storage.local.get([SESSION_STORAGE_KEY]);
+    return toStoredSession(stored[SESSION_STORAGE_KEY]);
+  }
+
+  async function saveSession(sessionLike) {
+    const session = toStoredSession(sessionLike);
+    if (!session) {
+      throw new Error('Invalid session received from auth service.');
+    }
+
+    await chrome.storage.local.set({
+      [SESSION_STORAGE_KEY]: session
+    });
+
+    return session;
+  }
+
+  async function clearSession() {
+    await chrome.storage.local.remove(SESSION_STORAGE_KEY);
+  }
+
+  function isSessionExpired(session) {
+    return !session || session.expiresAt <= Math.floor(Date.now() / 1000) + 60;
+  }
+
+  function updateAuthUi(session) {
+    const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value);
+    const signedIn = Boolean(session?.accessToken);
+    const expiresLabel = formatSessionExpiry(session);
+
+    authEmailInput.disabled = !apiBaseUrl;
+    authPasswordInput.disabled = !apiBaseUrl;
+    signInBtn.disabled = !apiBaseUrl;
+    submitBtn.disabled = !signedIn;
+
+    if (!apiBaseUrl) {
+      sessionBtn.dataset.state = 'setup';
+      sessionLabel.textContent = 'Setup';
+      sessionBtn.title = 'Open settings';
+      setElementVisible(authForm, false);
+      setElementVisible(signOutBtn, false);
+      setElementVisible(statusActionBtn, true);
+      statusActionBtn.textContent = 'Set Up';
+      authStatus.textContent = 'Connect the extension to your app first.';
+      authHint.textContent = 'Open Settings and save your local or deployed app URL.';
+      sessionMeta.textContent = '';
+      statusTitle.textContent = 'Setup required';
+      statusText.textContent = 'Add your app URL in Settings before you can sign in and save applications.';
+      return;
+    }
+
+    if (signedIn) {
+      const label = getSessionDisplayLabel(session);
+      sessionBtn.dataset.state = 'connected';
+      sessionLabel.textContent = label;
+      sessionBtn.title = session.userEmail || 'Connected';
+      setElementVisible(authForm, false);
+      setElementVisible(signOutBtn, true);
+      setElementVisible(statusActionBtn, false);
+      authStatus.textContent = `Saving as ${session.userEmail || 'current user'}`;
+      authHint.textContent = 'Captures go straight to the same dashboard account.';
+      sessionMeta.textContent = expiresLabel
+        ? `Session refreshes automatically. Current access token expires around ${expiresLabel}.`
+        : 'Session refreshes automatically while your refresh token stays valid.';
+      statusTitle.textContent = 'Ready to capture';
+      statusText.textContent = 'Autofill this page or type details manually, then save.';
+      return;
+    }
+
+    sessionBtn.dataset.state = 'signin';
+    sessionLabel.textContent = 'Sign in';
+    sessionBtn.title = 'Open settings';
+    setElementVisible(authForm, true);
+    setElementVisible(signOutBtn, false);
+    setElementVisible(statusActionBtn, true);
+    statusActionBtn.textContent = 'Sign In';
+    authStatus.textContent = 'Sign in to start capturing.';
+    authHint.textContent = 'Use the same email and password as the dashboard.';
+    sessionMeta.textContent = 'You should only need to sign in again if the refresh token is revoked or the app origin changes.';
+    statusTitle.textContent = 'Sign in required';
+    statusText.textContent = 'Open Settings, sign in once, and the popup will stay focused on capture after that.';
+  }
+
+  async function readJson(response) {
+    try {
+      return await response.json();
+    } catch {
+      return {};
+    }
+  }
+
+  async function getExtensionConfig() {
+    const apiBaseUrl = await resolveApiBaseUrl();
+
+    if (!apiBaseUrl) {
+      throw new Error('Save API Base URL first in Settings.');
+    }
+
+    let response;
+    try {
+      response = await fetch(`${apiBaseUrl}/api/extension/config`, {
+        cache: 'no-store'
+      });
+    } catch {
+      throw new Error(`Could not reach ${apiBaseUrl}. Check API Base URL and confirm the app is running.`);
+    }
+
+    const body = await readJson(response);
+
+    if (!response.ok) {
+      throw new Error(body.details || body.error || 'Unable to load extension config.');
+    }
+
+    return {
+      apiBaseUrl,
+      appBaseUrl: normalizeBaseUrl(body.appBaseUrl || apiBaseUrl),
+      supabaseUrl: normalizeBaseUrl(body.supabaseUrl),
+      supabaseAnonKey: normalizeText(body.supabaseAnonKey)
+    };
+  }
+
+  async function refreshSession(session) {
+    const config = await getExtensionConfig();
+    let response;
+    try {
+      response = await fetch(`${config.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: config.supabaseAnonKey
+        },
+        body: JSON.stringify({
+          refresh_token: session.refreshToken
+        })
+      });
+    } catch {
+      throw new Error('Network error while refreshing session.');
+    }
+    const body = await readJson(response);
+
+    if (!response.ok) {
+      throw new Error(body.msg || body.error_description || body.error || 'Session refresh failed.');
+    }
+
+    return saveSession(body);
+  }
+
+  async function getValidSession() {
+    const session = await getStoredSession();
+    if (!session) {
+      updateAuthUi(null);
+      return null;
+    }
+
+    if (!isSessionExpired(session)) {
+      updateAuthUi(session);
+      return session;
+    }
+
+    try {
+      const refreshed = await refreshSession(session);
+      updateAuthUi(refreshed);
+      return refreshed;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Session refresh failed.';
+      const isRevokedSession =
+        /invalid|expired|revoked|refresh token|jwt/i.test(message);
+
+      if (isRevokedSession) {
+        await clearSession();
+        updateAuthUi(null);
+        setAuthMessage('Session expired. Sign in again.', true);
+        return null;
+      }
+
+      updateAuthUi(session);
+      setAuthMessage('Could not refresh the session right now. Try again in a moment.', true);
+      return null;
+    }
+  }
+
+  async function initializeSession() {
+    setAuthMessage('');
+    updateAuthUi(await getStoredSession());
+    await getValidSession();
   }
 
   async function saveDraft() {
@@ -82,6 +408,62 @@
 
   async function clearDraft() {
     await chrome.storage.local.remove(DRAFT_STORAGE_KEY);
+  }
+
+  async function signIn(event) {
+    event.preventDefault();
+    setError('');
+    setAuthMessage('');
+
+    const email = normalizeText(authEmailInput.value);
+    const password = authPasswordInput.value;
+
+    if (!email || !password) {
+      setAuthMessage('Email and password are required.', true);
+      return;
+    }
+
+    signInBtn.disabled = true;
+
+    try {
+      const config = await getExtensionConfig();
+      const response = await fetch(`${config.supabaseUrl}/auth/v1/token?grant_type=password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: config.supabaseAnonKey
+        },
+        body: JSON.stringify({
+          email,
+          password
+        })
+      });
+      const body = await readJson(response);
+
+      if (!response.ok) {
+        throw new Error(body.msg || body.error_description || body.error || 'Sign-in failed.');
+      }
+
+      const session = await saveSession(body);
+      authPasswordInput.value = '';
+      updateAuthUi(session);
+      setAuthMessage('Signed in.');
+    } catch (error) {
+      await clearSession();
+      updateAuthUi(null);
+      setAuthMessage(error instanceof Error ? error.message : 'Sign-in failed.', true);
+    } finally {
+      signInBtn.disabled = false;
+    }
+  }
+
+  async function signOut() {
+    await clearSession();
+    authPasswordInput.value = '';
+    updateAuthUi(null);
+    setAuthMessage('Signed out.');
+    openSettingsPanel();
+    authEmailInput.focus();
   }
 
   async function autofillFromCurrentPage() {
@@ -352,7 +734,7 @@
       jobTitleInput.value = normalizeText(extracted.jobTitle);
       jobUrlInput.value = normalizeText(extracted.jobUrl || tab.url) || tab.url;
       await saveDraft();
-    } catch (e) {
+    } catch {
       setError('Unable to read page.');
     }
   }
@@ -360,13 +742,14 @@
   async function submitApplication(e) {
     e.preventDefault();
     setError('');
-    const apiBaseUrl = normalizeText(
-      (await chrome.storage.sync.get(['apiBaseUrl'])).apiBaseUrl || ''
-    );
-    if (!apiBaseUrl) {
-      setError('Save API Base URL first in Settings.');
+    const session = await getValidSession();
+    if (!session?.accessToken) {
+      setError('Sign in to save applications.');
       return;
     }
+
+    const { apiBaseUrl } = await getExtensionConfig();
+
     const payload = {
       company: normalizeText(companyInput.value),
       jobTitle: normalizeText(jobTitleInput.value),
@@ -387,12 +770,19 @@
       const res = await fetch(`${apiBaseUrl}/api/applications`, {
         method: 'POST',
         headers: {
+          Authorization: `Bearer ${session.accessToken}`,
           'Content-Type': 'application/json',
           'x-idempotency-key': crypto.randomUUID()
         },
         body: JSON.stringify(payload)
       });
-      const body = await res.json();
+      const body = await readJson(res);
+      if (res.status === 401 || res.status === 403) {
+        await clearSession();
+        updateAuthUi(null);
+        setAuthMessage('Session expired. Sign in again.', true);
+        throw new Error('Session expired. Sign in again.');
+      }
       if (!res.ok) throw new Error(body.details || body.error || 'Request failed');
       submitBtn.classList.add('is-success');
       await clearDraft();
@@ -406,6 +796,26 @@
     }
   }
 
+  sessionBtn.addEventListener('click', () => {
+    openSettingsPanel();
+    if (!normalizeBaseUrl(apiBaseUrlInput.value)) {
+      apiBaseUrlInput.focus();
+      return;
+    }
+    if (signOutBtn.hidden) {
+      authEmailInput.focus();
+    }
+  });
+  statusActionBtn.addEventListener('click', () => {
+    openSettingsPanel();
+    if (!normalizeBaseUrl(apiBaseUrlInput.value)) {
+      apiBaseUrlInput.focus();
+      return;
+    }
+    authEmailInput.focus();
+  });
+  authForm.addEventListener('submit', signIn);
+  signOutBtn.addEventListener('click', signOut);
   saveSettingsBtn.addEventListener('click', saveSettings);
   autofillBtn.addEventListener('click', autofillFromCurrentPage);
   formEl.addEventListener('submit', submitApplication);
@@ -414,7 +824,14 @@
     input.addEventListener('change', saveDraft);
   }
 
-  loadTheme();
-  loadSettings();
-  loadDraft();
+  async function initializePopup() {
+    await loadTheme();
+    await loadSettings();
+    await loadDraft();
+    await initializeSession();
+  }
+
+  initializePopup().catch((error) => {
+    setAuthMessage(error instanceof Error ? error.message : 'Failed to initialize extension.', true);
+  });
 })();

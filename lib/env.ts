@@ -6,6 +6,11 @@ function mustGet(name: string): string {
   return value;
 }
 
+function optionalGet(name: string): string | null {
+  const value = process.env[name];
+  return value ? value : null;
+}
+
 export function getSupabaseEnv() {
   return {
     url: mustGet('SUPABASE_URL'),
@@ -14,7 +19,11 @@ export function getSupabaseEnv() {
 }
 
 export function getSheetsEnv() {
-  const rawServiceAccount = mustGet('GOOGLE_SERVICE_ACCOUNT_JSON');
+  const rawServiceAccount = optionalGet('GOOGLE_SERVICE_ACCOUNT_JSON');
+
+  if (!rawServiceAccount) {
+    return null;
+  }
 
   let serviceAccount: Record<string, unknown>;
   try {
@@ -24,8 +33,9 @@ export function getSheetsEnv() {
   }
 
   return {
-    sheetId: mustGet('GOOGLE_SHEET_ID'),
-    sheetTab: process.env.GOOGLE_SHEET_TAB || 'Applications',
-    serviceAccount
+    defaultSheetTab: process.env.GOOGLE_SHEET_TAB || 'Applications',
+    serviceAccount,
+    serviceAccountEmail:
+      typeof serviceAccount.client_email === 'string' ? serviceAccount.client_email : null
   };
 }
