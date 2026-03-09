@@ -33,6 +33,10 @@ type SortKey =
   | 'company_asc'
   | 'company_desc';
 
+type FetchApplicationsOptions = {
+  showLoading?: boolean;
+};
+
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
 const AUTO_REFRESH_MS = 30_000;
 
@@ -453,8 +457,8 @@ export function Dashboard() {
     setErrorMessage('');
   }, []);
 
-  const fetchApplications = useCallback(async () => {
-    setLoading(true);
+  const fetchApplications = useCallback(async ({ showLoading = true }: FetchApplicationsOptions = {}) => {
+    if (showLoading) setLoading(true);
     setErrorMessage('');
     try {
       const res = await fetch(`/api/applications${buildQuery(filters)}`, {
@@ -470,7 +474,7 @@ export function Dashboard() {
       setApplications(MOCK_APPLICATIONS);
       setUsingMockData(true);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [filters]);
 
@@ -481,7 +485,7 @@ export function Dashboard() {
   useEffect(() => {
     if (!autoRefreshEnabled) return;
     const timer = window.setInterval(() => {
-      fetchApplications();
+      fetchApplications({ showLoading: false });
     }, AUTO_REFRESH_MS);
     return () => window.clearInterval(timer);
   }, [autoRefreshEnabled, fetchApplications]);
@@ -645,8 +649,21 @@ export function Dashboard() {
   }
 
   async function handleStatusChange(id: string, status: ApplicationStatus) {
+    const previousApplication = applications.find((app) => app.id === id);
+    if (!previousApplication || previousApplication.status === status) return;
+
     resetMessages();
     setSavingIds((p) => ({ ...p, [id]: true }));
+    setApplications((current) =>
+      current.map((app) =>
+        app.id === id
+          ? {
+              ...app,
+              status
+            }
+          : app
+      )
+    );
     try {
       const res = await fetch(`/api/applications/${id}`, {
         method: 'PATCH',
@@ -655,9 +672,16 @@ export function Dashboard() {
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.details || body.error || 'Failed to update status');
-      setStatusMessage(`Status updated to ${status}.`);
-      await fetchApplications();
+      if (body.application) {
+        setApplications((current) =>
+          current.map((app) => (app.id === id ? body.application : app))
+        );
+      }
+      setLastRefreshedAt(new Date().toISOString());
     } catch (err) {
+      setApplications((current) =>
+        current.map((app) => (app.id === id ? previousApplication : app))
+      );
       setErrorMessage(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setSavingIds((p) => ({ ...p, [id]: false }));
