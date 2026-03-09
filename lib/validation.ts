@@ -2,7 +2,8 @@ import {
   APPLICATION_STATUSES,
   type ApplicationStatus,
   type CreateApplicationInput,
-  type UpdateApplicationInput
+  type UpdateApplicationInput,
+  type UpdateUserSettingsInput
 } from './types';
 
 function normalizeString(value: unknown): string {
@@ -84,6 +85,41 @@ export function validateUpdatePayload(payload: unknown): UpdateApplicationInput 
 
   if (Object.keys(next).length === 0) {
     throw new Error('At least one editable field is required');
+  }
+
+  return next;
+}
+
+export function validateUserSettingsPayload(payload: unknown): UpdateUserSettingsInput {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Payload must be an object');
+  }
+
+  const raw = payload as Record<string, unknown>;
+  const next: UpdateUserSettingsInput = {};
+
+  if ('googleSheetId' in raw) {
+    const googleSheetId = normalizeString(raw.googleSheetId);
+    next.googleSheetId = googleSheetId || null;
+  }
+
+  if ('googleSheetTab' in raw) {
+    const googleSheetTab = normalizeString(raw.googleSheetTab);
+    if (!googleSheetTab) {
+      throw new Error('googleSheetTab cannot be empty');
+    }
+    next.googleSheetTab = googleSheetTab;
+  }
+
+  if ('googleSheetSyncEnabled' in raw) {
+    if (typeof raw.googleSheetSyncEnabled !== 'boolean') {
+      throw new Error('googleSheetSyncEnabled must be a boolean');
+    }
+    next.googleSheetSyncEnabled = raw.googleSheetSyncEnabled;
+  }
+
+  if (Object.keys(next).length === 0) {
+    throw new Error('At least one settings field is required');
   }
 
   return next;

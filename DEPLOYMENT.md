@@ -20,11 +20,12 @@
    | Variable | Value | Notes |
    |----------|-------|-------|
    | `NEXT_PUBLIC_APP_URL` | `https://your-app.vercel.app` | Update after first deploy |
+   | `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL | Public client URL |
+   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anon key | Public client key for auth |
    | `SUPABASE_URL` | Your Supabase project URL | From Supabase dashboard |
    | `SUPABASE_SERVICE_ROLE_KEY` | Your service role key | From Supabase dashboard |
-   | `GOOGLE_SHEET_ID` | Your Google Sheet ID | |
-   | `GOOGLE_SHEET_TAB` | `Applications` or your tab name | Optional, defaults to "Applications" |
-   | `GOOGLE_SERVICE_ACCOUNT_JSON` | Full JSON string | Paste the entire service account JSON |
+   | `GOOGLE_SHEET_TAB` | `Applications` or your tab name | Optional default for new user sheets |
+   | `GOOGLE_SERVICE_ACCOUNT_JSON` | Full JSON string | Optional; required only for Google Sheets sync |
 
 5. **Deploy** – Vercel will build and deploy automatically.
 
@@ -63,8 +64,9 @@
 All of these must be set in Vercel for the app to work:
 
 - `NEXT_PUBLIC_APP_URL` – Your Vercel deployment URL
+- `NEXT_PUBLIC_SUPABASE_URL` – Supabase project URL for the browser auth client
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` – Supabase anon key for the browser auth client
 - `SUPABASE_URL` – Supabase project URL
 - `SUPABASE_SERVICE_ROLE_KEY` – Supabase service role key
-- `GOOGLE_SHEET_ID` – Google Sheet ID
-- `GOOGLE_SHEET_TAB` – (optional) Sheet tab name
-- `GOOGLE_SERVICE_ACCOUNT_JSON` – Full JSON of your Google service account
+- `GOOGLE_SHEET_TAB` – (optional) Default sheet tab name
+- `GOOGLE_SERVICE_ACCOUNT_JSON` – (optional) Full JSON of your Google service account

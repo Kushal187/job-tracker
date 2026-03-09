@@ -8,6 +8,7 @@ import {
   useRef,
   useState
 } from 'react';
+import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { APPLICATION_STATUSES, type ApplicationStatus } from '@/lib/types';
 
 type Application = {
@@ -23,6 +24,14 @@ type Application = {
 
 type FilterState = {
   status: string;
+};
+
+type UserSettings = {
+  googleSheetId: string | null;
+  googleSheetTab: string;
+  googleSheetSyncEnabled: boolean;
+  sheetsAvailable: boolean;
+  serviceAccountEmail: string | null;
 };
 
 type SortKey =
@@ -46,23 +55,11 @@ const initialCreateState = {
   jobUrl: ''
 };
 
-const MOCK_APPLICATIONS: Application[] = [
-  { id: 'demo-1', company: 'Linear', jobTitle: 'Product Designer', status: 'Interview', jobUrl: 'https://jobs.linear.app/product-designer', appliedAt: '2026-02-24T13:05:00.000Z', updatedAt: '2026-02-24T13:05:00.000Z', sheetRowNumber: 102 },
-  { id: 'demo-2', company: 'Notion', jobTitle: 'Growth Marketing Manager', status: 'Applied', jobUrl: 'https://www.notion.so/careers/growth-marketing-manager', appliedAt: '2026-02-22T15:32:00.000Z', updatedAt: '2026-02-22T15:32:00.000Z', sheetRowNumber: 103 },
-  { id: 'demo-3', company: 'Stripe', jobTitle: 'Frontend Engineer, Dashboard', status: 'Reject', jobUrl: 'https://stripe.com/jobs/listing/frontend-engineer-dashboard', appliedAt: '2026-02-17T09:12:00.000Z', updatedAt: '2026-02-19T08:41:00.000Z', sheetRowNumber: 104 },
-  { id: 'demo-4', company: 'Mercury', jobTitle: 'Senior Product Manager', status: 'Applied', jobUrl: 'https://mercury.com/jobs/senior-product-manager', appliedAt: '2026-02-15T20:07:00.000Z', updatedAt: '2026-02-15T20:07:00.000Z', sheetRowNumber: 105 },
-  { id: 'demo-5', company: 'Ramp', jobTitle: 'Technical Program Manager', status: 'Interview', jobUrl: 'https://ramp.com/careers/technical-program-manager', appliedAt: '2026-02-11T14:30:00.000Z', updatedAt: '2026-02-18T11:22:00.000Z', sheetRowNumber: 106 },
-  { id: 'demo-6', company: 'Vercel', jobTitle: 'Developer Relations Engineer', status: 'Accepted', jobUrl: 'https://vercel.com/careers/developer-relations-engineer', appliedAt: '2026-02-05T16:10:00.000Z', updatedAt: '2026-02-27T11:15:00.000Z', sheetRowNumber: 107 },
-  { id: 'demo-7', company: 'Figma', jobTitle: 'Design Systems Engineer', status: 'Applied', jobUrl: 'https://www.figma.com/careers/design-systems-engineer', appliedAt: '2026-02-02T10:45:00.000Z', updatedAt: '2026-02-02T10:45:00.000Z', sheetRowNumber: 108 },
-  { id: 'demo-8', company: 'OpenAI', jobTitle: 'Product Operations Lead', status: 'OA', jobUrl: 'https://openai.com/careers/product-operations-lead', appliedAt: '2026-01-31T11:05:00.000Z', updatedAt: '2026-02-03T08:32:00.000Z', sheetRowNumber: 109 },
-  { id: 'demo-9', company: 'Anthropic', jobTitle: 'Operations Analyst', status: 'Applied', jobUrl: 'https://www.anthropic.com/careers/operations-analyst', appliedAt: '2026-01-28T18:22:00.000Z', updatedAt: '2026-01-28T18:22:00.000Z', sheetRowNumber: 110 },
-  { id: 'demo-10', company: 'Airtable', jobTitle: 'Customer Success Manager', status: 'Interview', jobUrl: 'https://airtable.com/careers/customer-success-manager', appliedAt: '2026-01-24T12:15:00.000Z', updatedAt: '2026-02-01T10:45:00.000Z', sheetRowNumber: 111 },
-  { id: 'demo-11', company: 'Figma', jobTitle: 'Staff Engineer', status: 'Reject', jobUrl: 'https://www.figma.com/careers/staff-engineer', appliedAt: '2026-01-20T09:00:00.000Z', updatedAt: '2026-01-25T14:20:00.000Z', sheetRowNumber: 112 },
-  { id: 'demo-12', company: 'Plaid', jobTitle: 'Backend Engineer', status: 'Applied', jobUrl: 'https://plaid.com/careers/backend-engineer', appliedAt: '2026-01-18T11:30:00.000Z', updatedAt: '2026-01-18T11:30:00.000Z', sheetRowNumber: 113 },
-  { id: 'demo-13', company: 'Retool', jobTitle: 'Solutions Engineer', status: 'Interview', jobUrl: 'https://retool.com/careers/solutions-engineer', appliedAt: '2026-01-15T16:45:00.000Z', updatedAt: '2026-01-22T10:00:00.000Z', sheetRowNumber: 114 },
-  { id: 'demo-14', company: 'Loom', jobTitle: 'Product Designer', status: 'Accepted', jobUrl: 'https://loom.com/careers/product-designer', appliedAt: '2026-01-10T08:20:00.000Z', updatedAt: '2026-02-28T09:30:00.000Z', sheetRowNumber: 115 },
-  { id: 'demo-15', company: 'Coda', jobTitle: 'Full Stack Engineer', status: 'OA', jobUrl: 'https://coda.io/careers/full-stack-engineer', appliedAt: '2026-01-05T14:00:00.000Z', updatedAt: '2026-01-12T11:15:00.000Z', sheetRowNumber: 116 }
-];
+const initialSettingsForm = {
+  googleSheetId: '',
+  googleSheetTab: 'Applications',
+  googleSheetSyncEnabled: false
+};
 
 function buildQuery(filters: FilterState) {
   const params = new URLSearchParams();
@@ -129,6 +126,21 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-secondary)',
     fontWeight: 400
   },
+  sessionPill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    height: 32,
+    padding: '0 12px',
+    borderRadius: 9999,
+    background: 'var(--surface)',
+    border: '1px solid var(--border)',
+    fontSize: 12,
+    color: 'var(--text-secondary)',
+    maxWidth: 220,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const
+  },
   topBarRight: {
     display: 'flex',
     alignItems: 'center',
@@ -182,6 +194,80 @@ const styles: Record<string, React.CSSProperties> = {
   statsNum: {
     color: 'var(--text)',
     fontWeight: 500
+  },
+  settingsCard: {
+    border: '1px solid var(--border)',
+    borderRadius: 12,
+    background: 'var(--surface)',
+    padding: 14,
+    marginBottom: 18
+  },
+  settingsHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 12
+  },
+  settingsTitle: {
+    margin: 0,
+    fontSize: 15,
+    fontWeight: 600
+  },
+  settingsMeta: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '6px 10px',
+    borderRadius: 9999,
+    fontSize: 12,
+    background: 'var(--table-header-bg)',
+    color: 'var(--text-secondary)'
+  },
+  settingsToggle: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    height: 34,
+    padding: '0 12px',
+    borderRadius: 9999,
+    border: '1px solid var(--border)',
+    background: 'var(--surface)',
+    color: 'var(--text)',
+    fontSize: 13,
+    fontWeight: 600
+  },
+  settingsHeaderActions: {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 10
+  },
+  settingsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: 14,
+    marginBottom: 12
+  },
+  helperText: {
+    fontSize: 12,
+    color: 'var(--text-secondary)',
+    lineHeight: 1.6,
+    margin: 0
+  },
+  checkboxRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 36,
+    fontSize: 13
+  },
+  settingsActions: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 14
   },
   filtersRow: {
     display: 'flex',
@@ -288,9 +374,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-secondary)',
     fontSize: 12
   },
-  rowHover: {
-    background: 'var(--table-row-hover)'
-  },
   statusSelect: {
     height: 28,
     minWidth: 116,
@@ -360,6 +443,13 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-secondary)',
     fontSize: 13
   },
+  emptyActions: {
+    display: 'flex',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 16
+  },
   skeleton: {
     height: 14,
     borderRadius: 4,
@@ -425,21 +515,31 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-secondary)',
     fontSize: 13,
     cursor: 'pointer'
-  },
+  }
 };
 
-export function Dashboard() {
+export function Dashboard({
+  onSignOut,
+  userEmail
+}: {
+  onSignOut?: () => Promise<void> | void;
+  userEmail?: string | null;
+} = {}) {
+  const supabase = getSupabaseBrowserClient();
   const [applications, setApplications] = useState<Application[]>([]);
+  const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [settingsForm, setSettingsForm] = useState(initialSettingsForm);
   const [createForm, setCreateForm] = useState(initialCreateState);
   const [editForm, setEditForm] = useState<Application | null>(null);
-  const [filters, setFilters] = useState<FilterState>({
-    status: ''
-  });
+  const [filters, setFilters] = useState<FilterState>({ status: '' });
   const [searchTerm, setSearchTerm] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const [usingMockData, setUsingMockData] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [syncingAll, setSyncingAll] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [savingIds, setSavingIds] = useState<Record<string, boolean>>({});
   const [deletingIds, setDeletingIds] = useState<Record<string, boolean>>({});
   const [addOpen, setAddOpen] = useState(false);
@@ -455,29 +555,100 @@ export function Dashboard() {
     setErrorMessage('');
   }, []);
 
+  const handleUnauthorized = useCallback(async (message = 'Your session expired. Sign in again.') => {
+    setApplications([]);
+    setErrorMessage(message);
+    await onSignOut?.();
+  }, [onSignOut]);
+
+  const authFetch = useCallback(async (input: RequestInfo | URL, init: RequestInit = {}) => {
+    const {
+      data: { session },
+      error
+    } = await supabase.auth.getSession();
+
+    if (error) {
+      throw error;
+    }
+
+    if (!session?.access_token) {
+      throw new Error('Please sign in to continue.');
+    }
+
+    const headers = new Headers(init.headers);
+    headers.set('Authorization', `Bearer ${session.access_token}`);
+
+    return fetch(input, {
+      ...init,
+      headers
+    });
+  }, [supabase]);
+
+  const fetchSettings = useCallback(async () => {
+    setSettingsLoading(true);
+    try {
+      const res = await authFetch('/api/user-settings', {
+        cache: 'no-store'
+      });
+      const body = await res.json();
+      if (res.status === 401 || res.status === 403) {
+        await handleUnauthorized(body.error || 'Please sign in to continue.');
+        return;
+      }
+      if (!res.ok) throw new Error(body.details || body.error || 'Failed to fetch settings');
+
+      setSettings(body.settings);
+      setSettingsForm({
+        googleSheetId: body.settings.googleSheetId || '',
+        googleSheetTab: body.settings.googleSheetTab,
+        googleSheetSyncEnabled: body.settings.googleSheetSyncEnabled
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      if (message === 'Please sign in to continue.') {
+        await handleUnauthorized(message);
+        return;
+      }
+      setErrorMessage(message);
+    } finally {
+      setSettingsLoading(false);
+    }
+  }, [authFetch, handleUnauthorized]);
+
   const fetchApplications = useCallback(async ({ showLoading = true }: FetchApplicationsOptions = {}) => {
     if (showLoading) setLoading(true);
     setErrorMessage('');
     try {
-      const res = await fetch(`/api/applications${buildQuery(filters)}`, {
+      const res = await authFetch(`/api/applications${buildQuery(filters)}`, {
         cache: 'no-store'
       });
       const body = await res.json();
+      if (res.status === 401 || res.status === 403) {
+        await handleUnauthorized(body.error || 'Please sign in to continue.');
+        return;
+      }
       if (!res.ok) throw new Error(body.details || body.error || 'Failed to fetch');
       setApplications(body.applications || []);
-      setUsingMockData(false);
     } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : 'Unknown error');
-      setApplications(MOCK_APPLICATIONS);
-      setUsingMockData(true);
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      if (message === 'Please sign in to continue.') {
+        await handleUnauthorized(message);
+        return;
+      }
+      setErrorMessage(message);
+      setApplications([]);
     } finally {
       if (showLoading) setLoading(false);
     }
-  }, [filters]);
+  }, [authFetch, filters, handleUnauthorized]);
 
   useEffect(() => {
     fetchApplications();
   }, [fetchApplications]);
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
 
   useEffect(() => {
     const stored = localStorage.getItem('job-tracker-theme') as 'light' | 'dark' | null;
@@ -512,7 +683,7 @@ export function Dashboard() {
 
   useEffect(() => {
     if (!statusMessage) return;
-    const timer = window.setTimeout(() => setStatusMessage(''), 2000);
+    const timer = window.setTimeout(() => setStatusMessage(''), 2500);
     return () => window.clearTimeout(timer);
   }, [statusMessage]);
 
@@ -563,12 +734,129 @@ export function Dashboard() {
 
   const filteredEmpty = !loading && pagedApplications.length === 0;
   const hasActiveFilters = Boolean(filters.status || searchTerm.trim());
+  const hasConnectedSheet = Boolean(settings?.googleSheetId && settings.googleSheetSyncEnabled);
+  const isFirstRun = !loading && applications.length === 0 && !hasActiveFilters;
+
+  async function handleSaveSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    resetMessages();
+    setSettingsSaving(true);
+
+    try {
+      const res = await authFetch('/api/user-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          googleSheetId: settingsForm.googleSheetId.trim(),
+          googleSheetTab: settingsForm.googleSheetTab.trim(),
+          googleSheetSyncEnabled: settingsForm.googleSheetSyncEnabled
+        })
+      });
+      const body = await res.json();
+      if (res.status === 401 || res.status === 403) {
+        await handleUnauthorized(body.error || 'Please sign in to continue.');
+        return;
+      }
+      if (!res.ok) throw new Error(body.details || body.error || 'Failed to save settings');
+
+      setSettings(body.settings);
+      setSettingsForm({
+        googleSheetId: body.settings.googleSheetId || '',
+        googleSheetTab: body.settings.googleSheetTab,
+        googleSheetSyncEnabled: body.settings.googleSheetSyncEnabled
+      });
+      setStatusMessage(
+        body.requiresFullSync
+          ? 'Settings saved. Run Sync all to rebuild sheet mappings in the new sheet.'
+          : 'Settings saved.'
+      );
+      await fetchApplications({ showLoading: false });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      if (message === 'Please sign in to continue.') {
+        await handleUnauthorized(message);
+        return;
+      }
+      setErrorMessage(message);
+    } finally {
+      setSettingsSaving(false);
+    }
+  }
+
+  async function handleDisconnectSheet() {
+    resetMessages();
+    setSettingsSaving(true);
+
+    try {
+      const res = await authFetch('/api/user-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          googleSheetId: '',
+          googleSheetSyncEnabled: false
+        })
+      });
+      const body = await res.json();
+      if (res.status === 401 || res.status === 403) {
+        await handleUnauthorized(body.error || 'Please sign in to continue.');
+        return;
+      }
+      if (!res.ok) throw new Error(body.details || body.error || 'Failed to disconnect sheet');
+
+      setSettings(body.settings);
+      setSettingsForm({
+        googleSheetId: '',
+        googleSheetTab: body.settings.googleSheetTab,
+        googleSheetSyncEnabled: false
+      });
+      setStatusMessage('Google Sheets sync disconnected.');
+      await fetchApplications({ showLoading: false });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      if (message === 'Please sign in to continue.') {
+        await handleUnauthorized(message);
+        return;
+      }
+      setErrorMessage(message);
+    } finally {
+      setSettingsSaving(false);
+    }
+  }
+
+  async function handleSyncAll() {
+    resetMessages();
+    setSyncingAll(true);
+
+    try {
+      const res = await authFetch('/api/user-settings/sync', {
+        method: 'POST'
+      });
+      const body = await res.json();
+      if (res.status === 401 || res.status === 403) {
+        await handleUnauthorized(body.error || 'Please sign in to continue.');
+        return;
+      }
+      if (!res.ok) throw new Error(body.details || body.error || 'Failed to sync applications');
+
+      setStatusMessage(`${body.syncedCount} application${body.syncedCount === 1 ? '' : 's'} synced to Google Sheets.`);
+      await fetchApplications({ showLoading: false });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      if (message === 'Please sign in to continue.') {
+        await handleUnauthorized(message);
+        return;
+      }
+      setErrorMessage(message);
+    } finally {
+      setSyncingAll(false);
+    }
+  }
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     resetMessages();
     try {
-      const res = await fetch('/api/applications', {
+      const res = await authFetch('/api/applications', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -577,13 +865,22 @@ export function Dashboard() {
         body: JSON.stringify(createForm)
       });
       const body = await res.json();
+      if (res.status === 401 || res.status === 403) {
+        await handleUnauthorized(body.error || 'Please sign in to continue.');
+        return;
+      }
       if (!res.ok) throw new Error(body.details || body.error || 'Failed to create');
       setCreateForm(initialCreateState);
-      setStatusMessage('Application created and synced to Google Sheets.');
+      setStatusMessage(hasConnectedSheet ? 'Application created and synced to your sheet.' : 'Application created.');
       setAddOpen(false);
-      await fetchApplications();
+      await fetchApplications({ showLoading: false });
     } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : 'Unknown error');
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      if (message === 'Please sign in to continue.') {
+        await handleUnauthorized(message);
+        return;
+      }
+      setErrorMessage(message);
     }
   }
 
@@ -593,7 +890,7 @@ export function Dashboard() {
     resetMessages();
     setSavingIds((p) => ({ ...p, [editForm.id]: true }));
     try {
-      const res = await fetch(`/api/applications/${editForm.id}`, {
+      const res = await authFetch(`/api/applications/${editForm.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -604,29 +901,47 @@ export function Dashboard() {
         })
       });
       const body = await res.json();
+      if (res.status === 401 || res.status === 403) {
+        await handleUnauthorized(body.error || 'Please sign in to continue.');
+        return;
+      }
       if (!res.ok) throw new Error(body.details || body.error || 'Failed to update');
-      setStatusMessage('Application updated and synced to Google Sheets.');
+      setStatusMessage(hasConnectedSheet ? 'Application updated and synced to your sheet.' : 'Application updated.');
       setEditForm(null);
-      await fetchApplications();
+      await fetchApplications({ showLoading: false });
     } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : 'Unknown error');
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      if (message === 'Please sign in to continue.') {
+        await handleUnauthorized(message);
+        return;
+      }
+      setErrorMessage(message);
     } finally {
       setSavingIds((p) => ({ ...p, [editForm.id]: false }));
     }
   }
 
   async function handleDelete(id: string) {
-    if (!window.confirm('Delete this application? This removes it from the dashboard and Google Sheets.')) return;
+    if (!window.confirm('Delete this application? This removes it from the dashboard and your connected sheet.')) return;
     resetMessages();
     setDeletingIds((p) => ({ ...p, [id]: true }));
     try {
-      const res = await fetch(`/api/applications/${id}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/applications/${id}`, { method: 'DELETE' });
       const body = await res.json();
+      if (res.status === 401 || res.status === 403) {
+        await handleUnauthorized(body.error || 'Please sign in to continue.');
+        return;
+      }
       if (!res.ok) throw new Error(body.details || body.error || 'Failed to delete');
       setStatusMessage('Application deleted.');
-      await fetchApplications();
+      await fetchApplications({ showLoading: false });
     } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : 'Unknown error');
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      if (message === 'Please sign in to continue.') {
+        await handleUnauthorized(message);
+        return;
+      }
+      setErrorMessage(message);
     } finally {
       setDeletingIds((p) => ({ ...p, [id]: false }));
     }
@@ -654,12 +969,16 @@ export function Dashboard() {
       )
     );
     try {
-      const res = await fetch(`/api/applications/${id}`, {
+      const res = await authFetch(`/api/applications/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
       });
       const body = await res.json();
+      if (res.status === 401 || res.status === 403) {
+        await handleUnauthorized(body.error || 'Please sign in to continue.');
+        return;
+      }
       if (!res.ok) throw new Error(body.details || body.error || 'Failed to update status');
       if (body.application) {
         setApplications((current) =>
@@ -670,7 +989,12 @@ export function Dashboard() {
       setApplications((current) =>
         current.map((app) => (app.id === id ? previousApplication : app))
       );
-      setErrorMessage(err instanceof Error ? err.message : 'Unknown error');
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      if (message === 'Please sign in to continue.') {
+        await handleUnauthorized(message);
+        return;
+      }
+      setErrorMessage(message);
     } finally {
       setSavingIds((p) => ({ ...p, [id]: false }));
     }
@@ -684,6 +1008,11 @@ export function Dashboard() {
           <span style={styles.topBarBadge}>({total})</span>
         </div>
         <div style={styles.topBarRight}>
+          {userEmail ? (
+            <span style={styles.sessionPill} title={userEmail}>
+              {userEmail}
+            </span>
+          ) : null}
           <button
             type="button"
             style={styles.btnSecondary}
@@ -691,6 +1020,13 @@ export function Dashboard() {
             disabled={loading}
           >
             {loading ? 'Refreshing...' : 'Refresh'}
+          </button>
+          <button
+            type="button"
+            style={styles.btnSecondary}
+            onClick={() => onSignOut?.()}
+          >
+            Sign out
           </button>
           <button
             type="button"
@@ -729,6 +1065,111 @@ export function Dashboard() {
         {' · '}
         <span style={styles.statsNum}>{responseRate}%</span> response rate
       </p>
+
+      <section style={styles.settingsCard}>
+        <div style={styles.settingsHeader}>
+          <h2 style={styles.settingsTitle}>Google Sheets Sync</h2>
+          <div style={styles.settingsHeaderActions}>
+            <span style={styles.settingsMeta}>
+              {settingsLoading
+                ? 'Loading settings...'
+                : hasConnectedSheet
+                  ? 'Sync enabled'
+                  : 'Database only'}
+            </span>
+            <button
+              type="button"
+              style={styles.settingsToggle}
+              onClick={() => setSettingsOpen((current) => !current)}
+              aria-expanded={settingsOpen}
+            >
+              {settingsOpen ? 'Hide settings' : 'Show settings'}
+              <span aria-hidden="true">{settingsOpen ? '−' : '+'}</span>
+            </button>
+          </div>
+        </div>
+
+        {settingsOpen && (
+          <form onSubmit={handleSaveSettings} style={{ marginTop: 14 }}>
+            <div style={styles.settingsGrid}>
+              <div style={styles.formField}>
+                <label style={styles.formLabel} htmlFor="sheet-id">Google Sheet ID</label>
+                <input
+                  id="sheet-id"
+                  style={styles.formInput}
+                  value={settingsForm.googleSheetId}
+                  onChange={(e) => setSettingsForm((current) => ({ ...current, googleSheetId: e.target.value }))}
+                  placeholder="Paste the spreadsheet ID"
+                  disabled={settingsLoading || settingsSaving || !settings?.sheetsAvailable}
+                />
+                <p style={styles.helperText}>
+                  {settings?.serviceAccountEmail
+                    ? `Share your sheet with ${settings.serviceAccountEmail} and give it Editor access.`
+                    : 'Google Sheets sync is unavailable until GOOGLE_SERVICE_ACCOUNT_JSON is configured on the server.'}
+                </p>
+              </div>
+
+              <div style={styles.formField}>
+                <label style={styles.formLabel} htmlFor="sheet-tab">Sheet tab</label>
+                <input
+                  id="sheet-tab"
+                  style={styles.formInput}
+                  value={settingsForm.googleSheetTab}
+                  onChange={(e) => setSettingsForm((current) => ({ ...current, googleSheetTab: e.target.value }))}
+                  placeholder="Applications"
+                  disabled={settingsLoading || settingsSaving || !settings?.sheetsAvailable}
+                />
+                <p style={styles.helperText}>
+                  Changing the sheet or tab clears row mappings until you run a full sync.
+                </p>
+              </div>
+
+              <div style={styles.formField}>
+                <label style={styles.formLabel}>Sync mode</label>
+                <label style={styles.checkboxRow}>
+                  <input
+                    type="checkbox"
+                    checked={settingsForm.googleSheetSyncEnabled}
+                    onChange={(e) => setSettingsForm((current) => ({ ...current, googleSheetSyncEnabled: e.target.checked }))}
+                    disabled={settingsLoading || settingsSaving || !settings?.sheetsAvailable}
+                  />
+                  Enable automatic sync on create, update, and delete
+                </label>
+                <p style={styles.helperText}>
+                  Leave this off if you want to store data only in the dashboard.
+                </p>
+              </div>
+            </div>
+
+            <div style={styles.settingsActions}>
+              <button
+                type="submit"
+                className="btn-primary"
+                style={styles.btnPrimary}
+                disabled={settingsLoading || settingsSaving}
+              >
+                {settingsSaving ? 'Saving...' : 'Save settings'}
+              </button>
+              <button
+                type="button"
+                style={styles.btnSecondary}
+                onClick={() => void handleSyncAll()}
+                disabled={syncingAll || !settings?.googleSheetId || !settings?.sheetsAvailable}
+              >
+                {syncingAll ? 'Syncing...' : 'Sync all'}
+              </button>
+              <button
+                type="button"
+                style={styles.btnSecondary}
+                onClick={() => void handleDisconnectSheet()}
+                disabled={settingsSaving || !settings?.googleSheetId}
+              >
+                Disconnect
+              </button>
+            </div>
+          </form>
+        )}
+      </section>
 
       <div style={styles.filtersRow}>
         <div style={styles.filterGroup}>
@@ -794,7 +1235,6 @@ export function Dashboard() {
 
       {statusMessage && <p style={styles.statusMessage}>{statusMessage}</p>}
       {errorMessage && <p style={{ fontSize: 13, color: 'var(--danger)', marginBottom: 8 }}>{errorMessage}</p>}
-      {usingMockData && <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>Using sample data (API unavailable)</p>}
 
       <div style={styles.tableWrap}>
         <table style={styles.table}>
@@ -823,11 +1263,34 @@ export function Dashboard() {
             ) : filteredEmpty ? (
               <tr>
                 <td colSpan={6} style={styles.emptyState}>
-                  No applications match your filters.
-                  <br />
-                  <button type="button" style={styles.clearBtn} onClick={clearFilters}>
-                    Clear filters
-                  </button>
+                  {isFirstRun ? (
+                    <>
+                      Your dashboard is empty.
+                      <br />
+                      Add your first application, then connect Google Sheets later if you want an external copy.
+                      <div style={styles.emptyActions}>
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          style={styles.btnPrimary}
+                          onClick={() => setAddOpen(true)}
+                        >
+                          Add first application
+                        </button>
+                        <button type="button" style={styles.btnSecondary} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+                          Review sync settings
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      No applications match your filters.
+                      <br />
+                      <button type="button" style={styles.clearBtn} onClick={clearFilters}>
+                        Clear filters
+                      </button>
+                    </>
+                  )}
                 </td>
               </tr>
             ) : (
@@ -1003,7 +1466,6 @@ export function Dashboard() {
           </div>
         </div>
       )}
-
     </div>
   );
 }
