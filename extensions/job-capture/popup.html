@@ -343,6 +343,18 @@
       color: var(--text-secondary);
     }
     .settings-panel .field { margin-bottom: var(--space-3); }
+    .connection-value {
+      display: inline-flex;
+      align-items: center;
+      min-height: 34px;
+      padding: 0 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--table-header-bg);
+      color: var(--text);
+      font-size: var(--font-size-body);
+      word-break: break-all;
+    }
     .btn-settings-save {
       height: 32px;
       padding: 0 var(--space-3);
@@ -441,14 +453,15 @@
       </form>
 
       <section id="settingsPanel" class="settings-panel" aria-hidden="true">
-        <div class="settings-section">
+        <div id="connectionSection" class="settings-section">
           <p class="settings-title">Connection</p>
-          <p class="settings-copy">Choose which app this extension talks to.</p>
-          <div class="field">
+          <p id="connectionCopy" class="settings-copy">Choose which app this extension talks to.</p>
+          <div id="connectionField" class="field">
             <label for="apiBaseUrl">API Base URL</label>
             <input id="apiBaseUrl" placeholder="http://localhost:3000" />
           </div>
-          <p class="helper-msg">Use your deployed app URL or `http://localhost:3000` for local development.</p>
+          <p id="connectionValue" class="connection-value visually-hidden"></p>
+          <p id="connectionHelper" class="helper-msg">Use your deployed app URL or `http://localhost:3000` for local development.</p>
           <button id="saveSettingsBtn" class="btn-settings-save" type="button">Save Settings</button>
         </div>
 
@@ -456,6 +469,7 @@
           <p class="settings-title">Account</p>
           <p id="authStatus" class="auth-status">Save your app URL in Settings to sign in.</p>
           <p id="authHint" class="auth-hint">The extension needs your local or deployed app URL first.</p>
+          <p id="sessionMeta" class="helper-msg"></p>
           <form id="authForm" class="auth-form">
             <div class="field">
               <label for="authEmail">Email</label>

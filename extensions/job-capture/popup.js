@@ -1,4 +1,8 @@
 (function () {
+  const PROD_API_BASE_URL = 'https://kushal-job-tracker.vercel.app';
+  const manifest = chrome.runtime.getManifest();
+  const isStoreBuild = Boolean(manifest.update_url);
+
   const sessionBtn = document.getElementById('sessionBtn');
   const sessionLabel = document.getElementById('sessionLabel');
   const authForm = document.getElementById('authForm');
@@ -9,6 +13,7 @@
   const authStatus = document.getElementById('authStatus');
   const authHint = document.getElementById('authHint');
   const authMsg = document.getElementById('authMsg');
+  const sessionMeta = document.getElementById('sessionMeta');
   const statusTitle = document.getElementById('statusTitle');
   const statusText = document.getElementById('statusText');
   const statusActionBtn = document.getElementById('statusActionBtn');
@@ -18,6 +23,10 @@
   const saveSettingsBtn = document.getElementById('saveSettingsBtn');
   const settingsBtn = document.getElementById('settingsBtn');
   const settingsPanel = document.getElementById('settingsPanel');
+  const connectionCopy = document.getElementById('connectionCopy');
+  const connectionField = document.getElementById('connectionField');
+  const connectionValue = document.getElementById('connectionValue');
+  const connectionHelper = document.getElementById('connectionHelper');
   const themeBtn = document.getElementById('themeBtn');
   const errorMsg = document.getElementById('errorMsg');
 
@@ -50,12 +59,32 @@
     return normalizeText(value).replace(/\/+$/, '');
   }
 
+  async function resolveApiBaseUrl() {
+    if (isStoreBuild) {
+      return PROD_API_BASE_URL;
+    }
+
+    const stored = await chrome.storage.sync.get(['apiBaseUrl']);
+    return normalizeBaseUrl(stored.apiBaseUrl || PROD_API_BASE_URL);
+  }
+
   function getSessionDisplayLabel(session) {
     const email = normalizeText(session?.userEmail);
     if (!email) return 'Connected';
 
     const localPart = email.split('@')[0] || email;
     return localPart.length <= 12 ? localPart : `${localPart.slice(0, 11)}...`;
+  }
+
+  function formatSessionExpiry(session) {
+    if (!session?.expiresAt) return '';
+
+    return new Date(session.expiresAt * 1000).toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
   }
 
   function setTheme(isDark) {
@@ -87,11 +116,33 @@
   }
 
   async function loadSettings() {
-    const stored = await chrome.storage.sync.get(['apiBaseUrl']);
-    apiBaseUrlInput.value = normalizeBaseUrl(stored.apiBaseUrl || '');
+    const resolvedApiBaseUrl = await resolveApiBaseUrl();
+    apiBaseUrlInput.value = resolvedApiBaseUrl;
+
+    if (isStoreBuild) {
+      connectionCopy.textContent = 'This store build is locked to the official Applyr app.';
+      connectionValue.textContent = PROD_API_BASE_URL;
+      setElementVisible(connectionField, false);
+      setElementVisible(connectionValue, true);
+      setElementVisible(connectionHelper, false);
+      setElementVisible(saveSettingsBtn, false);
+      return;
+    }
+
+    connectionCopy.textContent = 'Choose which app this extension talks to.';
+    setElementVisible(connectionField, true);
+    setElementVisible(connectionValue, false);
+    setElementVisible(connectionHelper, true);
+    setElementVisible(saveSettingsBtn, true);
   }
 
   async function saveSettings() {
+    if (isStoreBuild) {
+      apiBaseUrlInput.value = PROD_API_BASE_URL;
+      setAuthMessage('This build is locked to the official Applyr app.');
+      return;
+    }
+
     const previousApiBaseUrl = normalizeBaseUrl(
       (await chrome.storage.sync.get(['apiBaseUrl'])).apiBaseUrl || ''
     );
@@ -175,6 +226,7 @@
   function updateAuthUi(session) {
     const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value);
     const signedIn = Boolean(session?.accessToken);
+    const expiresLabel = formatSessionExpiry(session);
 
     authEmailInput.disabled = !apiBaseUrl;
     authPasswordInput.disabled = !apiBaseUrl;
@@ -191,6 +243,7 @@
       statusActionBtn.textContent = 'Set Up';
       authStatus.textContent = 'Connect the extension to your app first.';
       authHint.textContent = 'Open Settings and save your local or deployed app URL.';
+      sessionMeta.textContent = '';
       statusTitle.textContent = 'Setup required';
       statusText.textContent = 'Add your app URL in Settings before you can sign in and save applications.';
       return;
@@ -206,6 +259,9 @@
       setElementVisible(statusActionBtn, false);
       authStatus.textContent = `Saving as ${session.userEmail || 'current user'}`;
       authHint.textContent = 'Captures go straight to the same dashboard account.';
+      sessionMeta.textContent = expiresLabel
+        ? `Session refreshes automatically. Current access token expires around ${expiresLabel}.`
+        : 'Session refreshes automatically while your refresh token stays valid.';
       statusTitle.textContent = 'Ready to capture';
       statusText.textContent = 'Autofill this page or type details manually, then save.';
       return;
@@ -220,6 +276,7 @@
     statusActionBtn.textContent = 'Sign In';
     authStatus.textContent = 'Sign in to start capturing.';
     authHint.textContent = 'Use the same email and password as the dashboard.';
+    sessionMeta.textContent = 'You should only need to sign in again if the refresh token is revoked or the app origin changes.';
     statusTitle.textContent = 'Sign in required';
     statusText.textContent = 'Open Settings, sign in once, and the popup will stay focused on capture after that.';
   }
@@ -233,9 +290,7 @@
   }
 
   async function getExtensionConfig() {
-    const apiBaseUrl = normalizeBaseUrl(
-      (await chrome.storage.sync.get(['apiBaseUrl'])).apiBaseUrl || ''
-    );
+    const apiBaseUrl = await resolveApiBaseUrl();
 
     if (!apiBaseUrl) {
       throw new Error('Save API Base URL first in Settings.');
@@ -266,16 +321,21 @@
 
   async function refreshSession(session) {
     const config = await getExtensionConfig();
-    const response = await fetch(`${config.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: config.supabaseAnonKey
-      },
-      body: JSON.stringify({
-        refresh_token: session.refreshToken
-      })
-    });
+    let response;
+    try {
+      response = await fetch(`${config.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: config.supabaseAnonKey
+        },
+        body: JSON.stringify({
+          refresh_token: session.refreshToken
+        })
+      });
+    } catch {
+      throw new Error('Network error while refreshing session.');
+    }
     const body = await readJson(response);
 
     if (!response.ok) {
@@ -301,10 +361,20 @@
       const refreshed = await refreshSession(session);
       updateAuthUi(refreshed);
       return refreshed;
-    } catch {
-      await clearSession();
-      updateAuthUi(null);
-      setAuthMessage('Session expired. Sign in again.', true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Session refresh failed.';
+      const isRevokedSession =
+        /invalid|expired|revoked|refresh token|jwt/i.test(message);
+
+      if (isRevokedSession) {
+        await clearSession();
+        updateAuthUi(null);
+        setAuthMessage('Session expired. Sign in again.', true);
+        return null;
+      }
+
+      updateAuthUi(session);
+      setAuthMessage('Could not refresh the session right now. Try again in a moment.', true);
       return null;
     }
   }
