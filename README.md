@@ -88,4 +88,4 @@ To use it:
 4. Capture a job page and save it.
 
 The popup now stores its own Supabase session locally and sends the same bearer token the dashboard uses for protected API routes.
-Published/store builds are locked to `https://kushal-job-tracker.vercel.app` and do not allow changing the API origin.
+Published/store builds are locked to `https://useapplyr.vercel.app` and do not allow changing the API origin.

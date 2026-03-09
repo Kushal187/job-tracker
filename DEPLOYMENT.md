@@ -19,7 +19,7 @@
 4. **Add Environment Variables** (Project Settings → Environment Variables):
    | Variable | Value | Notes |
    |----------|-------|-------|
-   | `NEXT_PUBLIC_APP_URL` | `https://your-app.vercel.app` | Update after first deploy |
+   | `NEXT_PUBLIC_APP_URL` | `https://useapplyr.vercel.app` | Your production app URL |
    | `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL | Public client URL |
    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anon key | Public client key for auth |
    | `SUPABASE_URL` | Your Supabase project URL | From Supabase dashboard |
@@ -29,7 +29,7 @@
 
 5. **Deploy** – Vercel will build and deploy automatically.
 
-6. **Update `NEXT_PUBLIC_APP_URL`** – After the first deploy, copy your Vercel URL and update this env var, then redeploy.
+6. **Set `NEXT_PUBLIC_APP_URL` to your production URL** – Use `https://useapplyr.vercel.app`, then redeploy if needed.
 
 ---
 

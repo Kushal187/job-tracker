@@ -1,5 +1,5 @@
 (function () {
-  const PROD_API_BASE_URL = 'https://kushal-job-tracker.vercel.app';
+  const PROD_API_BASE_URL = 'https://useapplyr.vercel.app';
   const manifest = chrome.runtime.getManifest();
   const isStoreBuild = Boolean(manifest.update_url);
 
