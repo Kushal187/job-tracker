@@ -243,6 +243,7 @@ export function Home() {
   const [successMessage, setSuccessMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [viewportWidth, setViewportWidth] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -264,6 +265,19 @@ export function Home() {
     return () => {
       active = false;
       subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    function updateViewportWidth() {
+      setViewportWidth(window.innerWidth);
+    }
+
+    updateViewportWidth();
+    window.addEventListener('resize', updateViewportWidth);
+
+    return () => {
+      window.removeEventListener('resize', updateViewportWidth);
     };
   }, []);
 
@@ -332,54 +346,193 @@ export function Home() {
     return <Dashboard onSignOut={handleSignOut} userEmail={userEmail} />;
   }
 
+  const isTablet = viewportWidth !== null && viewportWidth <= 980;
+  const isMobile = viewportWidth !== null && viewportWidth <= 640;
+
+  const brandBarStyle = {
+    ...styles.brandBar,
+    ...(isTablet ? { padding: '16px 16px 0' } : {})
+  };
+  const brandMarkStyle = {
+    ...styles.brandMark,
+    ...(isMobile ? { width: 38, height: 38 } : {})
+  };
+  const brandNameStyle = {
+    ...styles.brandName,
+    ...(isMobile ? { fontSize: 18 } : {})
+  };
+  const brandTaglineStyle = {
+    ...styles.brandTagline,
+    ...(isMobile ? { fontSize: 10 } : {})
+  };
+  const frameStyle = {
+    ...styles.frame,
+    ...(isTablet
+      ? {
+          minHeight: 'auto',
+          gridTemplateColumns: '1fr',
+          gap: isMobile ? 20 : 24,
+          padding: isMobile ? '20px 16px 40px' : '28px 20px 48px'
+        }
+      : {})
+  };
+  const heroStyle = {
+    ...styles.hero,
+    ...(isTablet ? { padding: 0 } : {})
+  };
+  const eyebrowStyle = {
+    ...styles.eyebrow,
+    ...(isMobile
+      ? {
+          padding: '7px 10px',
+          fontSize: 11
+        }
+      : {})
+  };
+  const headlineStyle = {
+    ...styles.headline,
+    ...(isTablet ? { fontSize: 'clamp(2.5rem, 9vw, 4.5rem)' } : {}),
+    ...(isMobile
+      ? {
+          fontSize: 'clamp(2.35rem, 11vw, 3.25rem)',
+          lineHeight: 0.98,
+          margin: '16px 0 14px'
+        }
+      : {})
+  };
+  const subheadStyle = {
+    ...styles.subhead,
+    ...(isMobile
+      ? {
+          fontSize: 16,
+          lineHeight: 1.6,
+          marginBottom: 20
+        }
+      : isTablet
+        ? {
+            marginBottom: 24
+          }
+        : {})
+  };
+  const valueGridStyle = {
+    ...styles.valueGrid,
+    ...(isTablet ? { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' } : {}),
+    ...(isMobile
+      ? {
+          gridTemplateColumns: '1fr',
+          gap: 12,
+          marginBottom: 12
+        }
+      : {})
+  };
+  const valueCardStyle = {
+    ...styles.valueCard,
+    ...(isMobile ? { padding: 16, borderRadius: 18 } : {})
+  };
+  const valueTextStyle = {
+    ...styles.valueText,
+    ...(isMobile ? { fontSize: 16 } : {})
+  };
+  const detailRowStyle = {
+    ...styles.detailRow,
+    ...(isTablet ? { gridTemplateColumns: '1fr', gap: 12 } : {})
+  };
+  const detailCardStyle = {
+    ...styles.detailCard,
+    ...(isMobile ? { padding: 16 } : {})
+  };
+  const authCardStyle = {
+    ...styles.authCard,
+    ...(isTablet
+      ? {
+          width: '100%',
+          maxWidth: 560,
+          margin: '0 auto'
+        }
+      : {}),
+    ...(isMobile
+      ? {
+          maxWidth: '100%',
+          padding: 20,
+          borderRadius: 20
+        }
+      : {})
+  };
+  const cardTitleStyle = {
+    ...styles.cardTitle,
+    ...(isMobile ? { fontSize: 26 } : {})
+  };
+  const cardTextStyle = {
+    ...styles.cardText,
+    ...(isMobile ? { margin: '10px 0 18px' } : {})
+  };
+  const inputStyle = {
+    ...styles.input,
+    ...(isMobile ? { height: 44 } : {})
+  };
+  const primaryBtnStyle = {
+    ...styles.primaryBtn,
+    ...(isMobile ? { height: 46 } : {})
+  };
+  const noteStyle = {
+    ...styles.note,
+    ...(isMobile ? { marginTop: 14 } : {})
+  };
+
   return (
     <main style={styles.shell}>
-      <div style={styles.brandBar}>
-        <Image src="/applyr-icon.svg" alt="Applyr logo" width={42} height={42} style={styles.brandMark} />
+      <div style={brandBarStyle}>
+        <Image src="/applyr-icon.svg" alt="Applyr logo" width={42} height={42} style={brandMarkStyle} />
         <div style={styles.brandText}>
-          <p style={styles.brandName}>Applyr</p>
-          <p style={styles.brandTagline}>Private job search workspace</p>
+          <p style={brandNameStyle}>Applyr</p>
+          <p style={brandTaglineStyle}>Private job search workspace</p>
         </div>
       </div>
-      <div style={styles.frame}>
-        <section style={styles.hero}>
-          <div style={styles.eyebrow}>Private job search workspace</div>
-          <h1 style={styles.headline}>
-            Organize your job search.
-            <br />
-            Track progress clearly.
-            <br />
-            Keep your data yours.
+      <div style={frameStyle}>
+        <section style={heroStyle}>
+          <div style={eyebrowStyle}>Private job search workspace</div>
+          <h1 style={headlineStyle}>
+            {isMobile ? (
+              'Organize your job search. Track progress clearly. Keep your data yours.'
+            ) : (
+              <>
+                Organize your job search.
+                <br />
+                Track progress clearly.
+                <br />
+                Keep your data yours.
+              </>
+            )}
           </h1>
-          <p style={styles.subhead}>
+          <p style={subheadStyle}>
             Keep applications, status changes, and links in one private dashboard, with optional Google Sheets sync
             when you want a personal backup.
           </p>
 
-          <div style={styles.valueGrid}>
-            <div style={styles.valueCard}>
+          <div style={valueGridStyle}>
+            <div style={valueCardStyle}>
               <div style={styles.valueLabel}>Per-user privacy</div>
-              <div style={styles.valueText}>Your dashboard and settings stay scoped to your account.</div>
+              <div style={valueTextStyle}>Your dashboard and settings stay scoped to your account.</div>
             </div>
-            <div style={styles.valueCard}>
+            <div style={valueCardStyle}>
               <div style={styles.valueLabel}>Flexible backup</div>
-              <div style={styles.valueText}>Work entirely in the app, or connect a sheet for your own export copy.</div>
+              <div style={valueTextStyle}>Work entirely in the app, or connect a sheet for your own export copy.</div>
             </div>
-            <div style={styles.valueCard}>
+            <div style={valueCardStyle}>
               <div style={styles.valueLabel}>Fast flow</div>
-              <div style={styles.valueText}>Update statuses, edit entries, and filter your list without breaking flow.</div>
+              <div style={valueTextStyle}>Update statuses, edit entries, and filter your list without breaking flow.</div>
             </div>
           </div>
 
-          <div style={styles.detailRow}>
-            <div style={styles.detailCard}>
+          <div style={detailRowStyle}>
+            <div style={detailCardStyle}>
               <h3 style={styles.detailTitle}>How it works</h3>
               <p style={styles.detailText}>
                 Create an account, start with a clean dashboard, add applications, and optionally turn on Google Sheets
                 sync whenever you need it.
               </p>
             </div>
-            <div style={styles.detailCard}>
+            <div style={detailCardStyle}>
               <h3 style={styles.detailTitle}>What you get</h3>
               <p style={styles.detailText}>
                 A simple system for tracking applications, keeping links together, and reviewing progress without
@@ -389,7 +542,7 @@ export function Home() {
           </div>
         </section>
 
-        <section style={styles.authCard}>
+        <section style={authCardStyle}>
           <div style={styles.authTabs}>
             <button
               type="button"
@@ -421,8 +574,8 @@ export function Home() {
             </button>
           </div>
 
-          <h2 style={styles.cardTitle}>{mode === 'signIn' ? 'Welcome back' : 'Create your account'}</h2>
-          <p style={styles.cardText}>
+          <h2 style={cardTitleStyle}>{mode === 'signIn' ? 'Welcome back' : 'Create your account'}</h2>
+          <p style={cardTextStyle}>
             {mode === 'signIn'
               ? 'Sign in with your email and password to open your Applyr workspace.'
               : 'Create a new account with email and password. If email confirmation is enabled, we will tell you to check your inbox.'}
@@ -435,7 +588,7 @@ export function Home() {
                 id="auth-email"
                 type="email"
                 autoComplete="email"
-                style={styles.input}
+                style={inputStyle}
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 required
@@ -447,7 +600,7 @@ export function Home() {
                 id="auth-password"
                 type="password"
                 autoComplete={mode === 'signIn' ? 'current-password' : 'new-password'}
-                style={styles.input}
+                style={inputStyle}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 required
@@ -455,7 +608,7 @@ export function Home() {
             </label>
             {errorMessage ? <p style={styles.error}>{errorMessage}</p> : null}
             {successMessage ? <p style={styles.success}>{successMessage}</p> : null}
-            <button type="submit" style={styles.primaryBtn} disabled={isSubmitting}>
+            <button type="submit" style={primaryBtnStyle} disabled={isSubmitting}>
               {isSubmitting
                 ? mode === 'signIn'
                   ? 'Signing in...'
@@ -466,7 +619,7 @@ export function Home() {
             </button>
           </form>
 
-          <p style={styles.note}>
+          <p style={noteStyle}>
             Every account starts with a clean list. Google Sheets sync is optional and configured inside the dashboard
             after signup.
           </p>
