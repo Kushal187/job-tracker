@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import {
   FormEvent,
   useCallback,
@@ -114,6 +115,12 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: 8
+  },
+  topBarIcon: {
+    width: 26,
+    height: 26,
+    flexShrink: 0,
+    display: 'block'
   },
   topBarTitle: {
     fontSize: 16,
@@ -1004,7 +1011,8 @@ export function Dashboard({
     <div style={styles.shell}>
       <header style={styles.topBar}>
         <div style={styles.topBarLeft}>
-          <h1 style={styles.topBarTitle}>Job Tracker</h1>
+          <Image src="/applyr-icon.svg" alt="Applyr logo" width={26} height={26} style={styles.topBarIcon} />
+          <h1 style={styles.topBarTitle}>Applyr</h1>
           <span style={styles.topBarBadge}>({total})</span>
         </div>
         <div style={styles.topBarRight}>

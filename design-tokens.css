@@ -1,4 +1,4 @@
-/* Job Tracker Design Tokens - shared by extension + dashboard */
+/* Applyr Design Tokens - shared by extension + dashboard */
 
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap');
 
@@ -13,7 +13,7 @@
   --space-8: 32px;
 
   /* Typography */
-  --font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-family: 'Outfit', 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-size-caption: 11px;
   --font-size-table: 12px;
   --font-size-body: 13px;
@@ -26,72 +26,72 @@
   --letter-spacing-label: 0.05em;
 
   /* Light mode (default) */
-  --bg: #FAFAFA;
-  --surface: #FFFFFF;
-  --border: #E2E4E9;
-  --border-subtle: #E5E7EB;
-  --border-row: #F0F0F0;
-  --text: #111827;
-  --text-secondary: #6B7280;
-  --text-tertiary: #9CA3AF;
-  --accent: #2563EB;
-  --accent-hover: #1D4ED8;
-  --accent-muted: rgba(37, 99, 235, 0.08);
+  --bg: #f7f1e8;
+  --surface: #fffaf5;
+  --border: #e6d7c6;
+  --border-subtle: #ebdfd2;
+  --border-row: #efe4d8;
+  --text: #1f1a17;
+  --text-secondary: #6e6258;
+  --text-tertiary: #a08f82;
+  --accent: #991b1b;
+  --accent-hover: #7f1d1d;
+  --accent-muted: rgba(153, 27, 27, 0.08);
   --danger: #DC2626;
   --danger-hover: #B91C1C;
 
   /* Status badges - light */
-  --status-applied-bg: #4B5563;
-  --status-applied-text: #F9FAFB;
+  --status-applied-bg: #57534E;
+  --status-applied-text: #FAFAF9;
   --status-reject-bg: #B91C1C;
-  --status-reject-text: #FEE2E2;
+  --status-reject-text: #FFFFFF;
   --status-accepted-bg: #047857;
   --status-accepted-text: #D1FAE5;
   --status-interview-bg: #1D4ED8;
   --status-interview-text: #DBEAFE;
-  --status-oa-bg: #BFDBFE;
-  --status-oa-text: #1E3A8A;
+  --status-oa-bg: #FCD34D;
+  --status-oa-text: #78350F;
 
   /* Inputs */
   --input-height: 36px;
   --input-height-sm: 32px;
-  --input-border: #E2E4E9;
+  --input-border: #dcc9b5;
   --input-focus-ring: 0 0 0 1px var(--accent);
   --radius: 6px;
 
   /* Table */
-  --table-header-bg: #F9FAFB;
-  --table-row-hover: #F3F4F6;
+  --table-header-bg: #f8efe6;
+  --table-row-hover: #f5ece2;
   --row-height: 40px;
 }
 
 [data-theme='dark'] {
-  --bg: #111111;
-  --surface: #1A1A1A;
-  --border: #2A2A2A;
-  --border-subtle: #2A2A2A;
-  --border-row: #252525;
-  --text: #E5E5E5;
-  --text-secondary: #A3A3A3;
-  --text-tertiary: #737373;
-  --accent: #3B82F6;
-  --accent-hover: #60A5FA;
-  --accent-muted: rgba(59, 130, 246, 0.12);
+  --bg: #171311;
+  --surface: #221c19;
+  --border: #3a2c25;
+  --border-subtle: #352821;
+  --border-row: #30251f;
+  --text: #f5eee7;
+  --text-secondary: #c4b5a7;
+  --text-tertiary: #8f7b6b;
+  --accent: #c2410c;
+  --accent-hover: #ea580c;
+  --accent-muted: rgba(194, 65, 12, 0.16);
   --danger: #EF4444;
   --danger-hover: #F87171;
 
-  --status-applied-bg: #374151;
-  --status-applied-text: #F3F4F6;
+  --status-applied-bg: #44403C;
+  --status-applied-text: #FAFAF9;
   --status-reject-bg: #991B1B;
-  --status-reject-text: #FCA5A5;
+  --status-reject-text: #FFFFFF;
   --status-accepted-bg: #065F46;
   --status-accepted-text: #A7F3D0;
   --status-interview-bg: #1E40AF;
-  --status-interview-text: #BFDBFE;
-  --status-oa-bg: #1E3A8A;
-  --status-oa-text: #BFDBFE;
+  --status-interview-text: #DBEAFE;
+  --status-oa-bg: #78350F;
+  --status-oa-text: #FDE68A;
 
-  --input-border: #2A2A2A;
-  --table-header-bg: #141414;
-  --table-row-hover: #1F1F1F;
+  --input-border: #46352c;
+  --table-header-bg: #1d1714;
+  --table-row-hover: #261f1b;
 }

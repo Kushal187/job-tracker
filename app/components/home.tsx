@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { FormEvent, useEffect, useState } from 'react';
 import { Dashboard } from './dashboard';
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
@@ -11,7 +12,39 @@ const styles: Record<string, React.CSSProperties> = {
     minHeight: '100vh',
     background:
       'radial-gradient(circle at top left, rgba(180, 83, 9, 0.18), transparent 24%), radial-gradient(circle at bottom right, rgba(153, 27, 27, 0.12), transparent 22%), linear-gradient(180deg, #f8f4ed 0%, #efe3d4 100%)',
-    color: '#1f1a17'
+    color: 'var(--text)'
+  },
+  brandBar: {
+    maxWidth: 1180,
+    margin: '0 auto',
+    padding: '18px 20px 0',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12
+  },
+  brandMark: {
+    width: 42,
+    height: 42,
+    flexShrink: 0,
+    display: 'block'
+  },
+  brandText: {
+    display: 'grid',
+    gap: 2
+  },
+  brandName: {
+    margin: 0,
+    fontSize: 20,
+    fontWeight: 800,
+    letterSpacing: '-0.04em',
+    color: 'var(--text)'
+  },
+  brandTagline: {
+    margin: 0,
+    fontSize: 11,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.08em',
+    color: 'var(--text-secondary)'
   },
   frame: {
     maxWidth: 1180,
@@ -19,9 +52,9 @@ const styles: Record<string, React.CSSProperties> = {
     minHeight: '100vh',
     display: 'grid',
     gridTemplateColumns: 'minmax(0, 1.15fr) minmax(320px, 430px)',
-    gap: 28,
+    gap: 32,
     alignItems: 'center',
-    padding: '40px 16px'
+    padding: '40px 20px'
   },
   hero: {
     padding: '24px 0'
@@ -32,24 +65,26 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
     padding: '8px 12px',
     borderRadius: 999,
-    background: 'rgba(255, 255, 255, 0.76)',
-    border: '1px solid rgba(31, 26, 23, 0.08)',
+    background: 'var(--surface)',
+    border: '1px solid var(--border)',
     fontSize: 12,
     fontWeight: 700,
     letterSpacing: '0.08em',
-    textTransform: 'uppercase' as const
+    textTransform: 'uppercase' as const,
+    color: 'var(--text-secondary)'
   },
   headline: {
     fontSize: 'clamp(2.8rem, 7vw, 5.7rem)',
     lineHeight: 0.94,
     letterSpacing: '-0.055em',
-    margin: '18px 0 16px'
+    margin: '18px 0 16px',
+    color: 'var(--text)'
   },
   subhead: {
     maxWidth: 650,
     fontSize: 18,
     lineHeight: 1.7,
-    color: 'rgba(31, 26, 23, 0.76)',
+    color: 'var(--text-secondary)',
     marginBottom: 28
   },
   valueGrid: {
@@ -62,20 +97,21 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 18,
     borderRadius: 22,
     background: 'rgba(255, 255, 255, 0.76)',
-    border: '1px solid rgba(31, 26, 23, 0.08)',
+    border: '1px solid var(--border)',
     boxShadow: '0 18px 45px rgba(77, 52, 34, 0.08)'
   },
   valueLabel: {
     fontSize: 12,
     textTransform: 'uppercase' as const,
     letterSpacing: '0.08em',
-    color: 'rgba(31, 26, 23, 0.56)',
+    color: 'var(--text-secondary)',
     marginBottom: 8
   },
   valueText: {
     fontSize: 17,
     fontWeight: 600,
-    lineHeight: 1.35
+    lineHeight: 1.35,
+    color: 'var(--text)'
   },
   detailRow: {
     display: 'grid',
@@ -85,26 +121,26 @@ const styles: Record<string, React.CSSProperties> = {
   detailCard: {
     padding: 18,
     borderRadius: 18,
-    background: 'rgba(255, 255, 255, 0.52)',
-    border: '1px solid rgba(31, 26, 23, 0.06)'
+    background: 'rgba(255, 255, 255, 0.56)',
+    border: '1px solid var(--border)'
   },
   detailTitle: {
     margin: '0 0 8px',
     fontSize: 13,
     letterSpacing: '0.08em',
     textTransform: 'uppercase' as const,
-    color: 'rgba(31, 26, 23, 0.56)'
+    color: 'var(--text-secondary)'
   },
   detailText: {
     margin: 0,
     fontSize: 14,
     lineHeight: 1.65,
-    color: 'rgba(31, 26, 23, 0.72)'
+    color: 'var(--text-secondary)'
   },
   authCard: {
-    background: 'rgba(255, 255, 255, 0.9)',
-    border: '1px solid rgba(31, 26, 23, 0.08)',
-    borderRadius: 28,
+    background: 'rgba(255, 255, 255, 0.92)',
+    border: '1px solid var(--border)',
+    borderRadius: 24,
     padding: 28,
     boxShadow: '0 25px 60px rgba(77, 52, 34, 0.12)',
     backdropFilter: 'blur(16px)'
@@ -118,23 +154,24 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     height: 42,
     borderRadius: 14,
-    border: '1px solid rgba(31, 26, 23, 0.12)',
-    background: 'rgba(255, 255, 255, 0.88)',
-    color: '#1f1a17',
+    border: '1px solid var(--border)',
+    background: 'var(--surface)',
+    color: 'var(--text)',
     fontSize: 14,
     fontWeight: 700
   },
   authTabActive: {
-    background: '#b45309',
-    borderColor: '#b45309',
-    color: '#fff8f4'
+    background: 'var(--accent)',
+    borderColor: 'var(--accent)',
+    color: '#ffffff'
   },
   cardTitle: {
     fontSize: 28,
-    margin: 0
+    margin: 0,
+    color: 'var(--text)'
   },
   cardText: {
-    color: 'rgba(31, 26, 23, 0.72)',
+    color: 'var(--text-secondary)',
     lineHeight: 1.6,
     margin: '10px 0 20px'
   },
@@ -146,24 +183,25 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'grid',
     gap: 6,
     fontSize: 13,
-    fontWeight: 600
+    fontWeight: 600,
+    color: 'var(--text)'
   },
   input: {
     width: '100%',
     height: 46,
     padding: '0 14px',
     borderRadius: 14,
-    border: '1px solid rgba(31, 26, 23, 0.12)',
+    border: '1px solid var(--input-border)',
     background: 'rgba(255, 255, 255, 0.92)',
     fontSize: 15,
-    color: '#1f1a17'
+    color: 'var(--text)'
   },
   primaryBtn: {
     height: 48,
     border: 'none',
     borderRadius: 14,
-    background: '#991b1b',
-    color: '#fff8f4',
+    background: 'var(--accent)',
+    color: '#ffffff',
     fontSize: 15,
     fontWeight: 700
   },
@@ -171,11 +209,11 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 16,
     fontSize: 12,
     lineHeight: 1.7,
-    color: 'rgba(31, 26, 23, 0.6)'
+    color: 'var(--text-secondary)'
   },
   error: {
     margin: 0,
-    color: '#b91c1c',
+    color: 'var(--danger)',
     fontSize: 13,
     fontWeight: 600
   },
@@ -190,8 +228,8 @@ const styles: Record<string, React.CSSProperties> = {
     minHeight: '100vh',
     display: 'grid',
     placeItems: 'center',
-    background: '#f7f4ef',
-    color: '#1f1a17',
+    background: 'var(--bg)',
+    color: 'var(--text)',
     fontSize: 15
   }
 };
@@ -296,6 +334,13 @@ export function Home() {
 
   return (
     <main style={styles.shell}>
+      <div style={styles.brandBar}>
+        <Image src="/applyr-icon.svg" alt="Applyr logo" width={42} height={42} style={styles.brandMark} />
+        <div style={styles.brandText}>
+          <p style={styles.brandName}>Applyr</p>
+          <p style={styles.brandTagline}>Private job search workspace</p>
+        </div>
+      </div>
       <div style={styles.frame}>
         <section style={styles.hero}>
           <div style={styles.eyebrow}>Private job search workspace</div>
@@ -379,7 +424,7 @@ export function Home() {
           <h2 style={styles.cardTitle}>{mode === 'signIn' ? 'Welcome back' : 'Create your account'}</h2>
           <p style={styles.cardText}>
             {mode === 'signIn'
-              ? 'Use your Supabase email and password to open your private dashboard.'
+              ? 'Sign in with your email and password to open your Applyr workspace.'
               : 'Create a new account with email and password. If email confirmation is enabled, we will tell you to check your inbox.'}
           </p>
 

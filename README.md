@@ -1,4 +1,4 @@
-# Job Tracker
+# Applyr
 
 Multi-user job application tracker with:
 - Next.js dashboard
@@ -79,5 +79,12 @@ Open `http://localhost:3000`.
 
 ## Chrome Extension
 
-The legacy Chrome extension remains in the repo, but it is not part of the authenticated multi-user flow yet.
-It will not work against protected API routes until it gets its own auth integration.
+The extension lives in `extensions/job-capture`.
+
+To use it:
+1. Load the folder as an unpacked Chrome extension.
+2. Open the extension popup and save `API Base URL`.
+3. Sign in with the same email/password you use in the web dashboard.
+4. Capture a job page and save it.
+
+The popup now stores its own Supabase session locally and sends the same bearer token the dashboard uses for protected API routes.
