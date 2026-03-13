@@ -510,7 +510,15 @@
             /^careers?$/i,
             /^jobs?$/i,
             /^about us$/i,
-            /^privacy$/i
+            /^privacy$/i,
+            /^(apply|application|login|register|dashboard|profile)$/i,
+            /^(404|error|not found|page not found)$/i,
+            /^(loading|please wait|redirecting)$/i,
+            /^\d+\s*(results?|jobs?|openings?)$/i,
+            /^(next|previous|back|page \d+)$/i,
+            /^use ai to/i,
+            /^(show match|tailor my|create.*(cover|resume)|help me|people you|reach out)/i,
+            /^(premium|messaging|notifications|my network)$/i
           ];
           const BAD_COMPANY_PATTERNS = [
             /^home$/i,
@@ -521,17 +529,26 @@
             /^read more$/i,
             /^about us$/i,
             /^privacy$/i,
-            /^search jobs?$/i
+            /^search jobs?$/i,
+            /^(apply now|view (all )?jobs|see more|learn more|follow)$/i,
+            /^(menu|navigation|header|footer|sidebar)$/i,
+            /^\d+$/
           ];
           const looksBadTitle = (value) => {
             const text = cleanText(value);
             return !text || BAD_TITLE_PATTERNS.some((pattern) => pattern.test(text));
           };
-          const cleanCompanyName = (value) =>
-            cleanText(value)
-              .replace(/\b(careers?|jobs?)\b$/i, '')
-              .replace(/\s+[|:-]\s*$/, '')
-              .trim();
+          const cleanCompanyName = (value) => {
+            let text = cleanText(value);
+            text = text.replace(/\s*[-–—|]\s*(careers?|jobs?|hiring|openings?|open roles|open positions)\s*$/i, '');
+            text = text.replace(/\b(careers?|jobs?)\s*$/i, '');
+            text = text.replace(/\s*(logo|icon|image|banner)s?\s*$/i, '');
+            text = text.replace(/^(job|position|role|opening)\s+(at|@)\s+/i, '');
+            text = text.replace(/\s*[-–—]\s*[A-Z][a-zA-Z\s]+,\s*[A-Z]{2}\s*$/, '');
+            text = text.replace(/\s+[|:–—-]\s*$/, '');
+            text = text.replace(/^["']+|["']+$/g, '');
+            return text.replace(/\s+/g, ' ').trim();
+          };
           const looksBadCompany = (value) => {
             const text = cleanCompanyName(value);
             return (
@@ -601,13 +618,24 @@
           let jobTitle = fromStructuredData.jobTitle;
 
           if (host.includes('linkedin.com')) {
+            // LinkedIn uses obfuscated class names — prefer parsing the page/meta title
+            // Format: "Job Title | Company Name | LinkedIn"
+            const liTitle = metaTitle || pageTitle;
+            const liParts = liTitle.split(/\s*\|\s*/);
+            if (liParts.length >= 3 && liParts[liParts.length - 1].trim().toLowerCase() === 'linkedin') {
+              jobTitle = jobTitle || cleanText(liParts[0]);
+              company = company || cleanCompanyName(liParts[1]);
+            }
+            // Fallback to DOM selectors
             company =
               company ||
               pickFirst(
                 [
                   '.job-details-jobs-unified-top-card__company-name a',
                   '.topcard__org-name-link',
-                  '.jobs-unified-top-card__company-name'
+                  '.jobs-unified-top-card__company-name',
+                  '[data-tracking-control-name="public_jobs_topcard-org-name"]',
+                  'a[href*="/company/"]'
                 ],
                 looksBadCompany
               );
@@ -616,26 +644,87 @@
               pickFirst(
                 [
                   '.job-details-jobs-unified-top-card__job-title h1',
+                  '.job-details-jobs-unified-top-card__job-title',
                   '.top-card-layout__title',
-                  '.jobs-unified-top-card__job-title'
+                  '.jobs-unified-top-card__job-title',
+                  'h1.t-24'
+                ],
+                looksBadTitle
+              );
+          }
+
+          if (host.includes('indeed.com')) {
+            company =
+              company ||
+              pickFirst(
+                [
+                  '[data-testid="inlineHeader-companyName"] a',
+                  '[data-testid="inlineHeader-companyName"]',
+                  '[data-company-name]',
+                  '.jobsearch-InlineCompanyRating a',
+                  '.jobsearch-InlineCompanyRating div'
+                ],
+                looksBadCompany
+              );
+            jobTitle =
+              jobTitle ||
+              pickFirst(
+                [
+                  '[data-testid="jobsearch-JobInfoHeader-title"]',
+                  '.jobsearch-JobInfoHeader-title',
+                  'h1.icl-u-xs-mb--xs',
+                  'h1'
                 ],
                 looksBadTitle
               );
           }
 
           if (host.includes('greenhouse.io')) {
+            const ghLogoAlt = (() => {
+              const img = document.querySelector('#header img[alt], .logo img[alt], header img[alt]');
+              if (!img) return '';
+              return cleanText(img.getAttribute('alt') || '')
+                .replace(/\s*(logo|icon|image|banner)s?\s*$/i, '')
+                .trim();
+            })();
+            const ghUrlCompany = (() => {
+              try {
+                const { hostname, pathname } = new URL(location.href);
+                // boards.greenhouse.io/{company}/jobs/...
+                if (hostname === 'boards.greenhouse.io') {
+                  const match = pathname.match(/^\/([^/]+)/);
+                  if (match) return match[1].replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                }
+                // {company}.greenhouse.io/...
+                const sub = hostname.replace(/\.greenhouse\.io$/, '');
+                if (sub && sub !== 'boards' && sub !== 'www') {
+                  return sub.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                }
+              } catch {}
+              return '';
+            })();
             company =
               company ||
               pickFirst(['#header .company-name', '.company-name'], looksBadCompany) ||
+              (ghLogoAlt && !looksBadCompany(ghLogoAlt) ? ghLogoAlt : '') ||
+              (ghUrlCompany && !looksBadCompany(ghUrlCompany) ? ghUrlCompany : '') ||
               cleanCompanyName(siteName);
             jobTitle =
               jobTitle || pickFirst(['#content h1', '.app-title'], looksBadTitle);
           }
 
           if (host.includes('lever.co')) {
+            const leverUrlCompany = (() => {
+              try {
+                const match = new URL(location.href).pathname.match(/^\/([^/]+)/);
+                if (match) return match[1].replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+              } catch {}
+              return '';
+            })();
             company =
               company ||
               pickFirst(['.main-header-logo img', '.main-header-logo'], looksBadCompany) ||
+              (leverUrlCompany && !looksBadCompany(leverUrlCompany) ? leverUrlCompany : '') ||
               cleanCompanyName(siteName);
             jobTitle =
               jobTitle ||
@@ -643,6 +732,13 @@
           }
 
           if (host.includes('myworkdayjobs.com') || host.includes('workday.com')) {
+            const wdUrlCompany = (() => {
+              try {
+                const sub = new URL(location.href).hostname.split('.')[0];
+                if (sub && sub !== 'www') return sub.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+              } catch {}
+              return '';
+            })();
             company =
               company ||
               pickFirst(
@@ -655,6 +751,7 @@
                 ],
                 looksBadCompany
               ) ||
+              (wdUrlCompany && !looksBadCompany(wdUrlCompany) ? wdUrlCompany : '') ||
               cleanCompanyName(siteName);
             jobTitle =
               jobTitle ||
@@ -702,10 +799,13 @@
               ) || cleanCompanyName(siteName);
           }
 
+          const ROLE_KEYWORDS = /\b(engineer|developer|manager|analyst|designer|scientist|director|intern|associate|consultant|coordinator|specialist|lead|head|vp|chief|officer|architect|devops|sre|qa|frontend|backend|fullstack|full.stack|software|data|product|program|project|marketing|sales|recruiter|accountant|researcher|technician|administrator|executive|advisor|strategist|writer|editor)\b/i;
+          const looksLikeJobTitle = (text) => ROLE_KEYWORDS.test(text);
+
           const titleParts = splitCandidates(metaTitle || pageTitle);
-          const firstTitlePart = titleParts[0] || '';
-          if (!jobTitle && firstTitlePart && !looksBadTitle(firstTitlePart)) {
-            jobTitle = firstTitlePart;
+          if (!jobTitle) {
+            const rolePart = titleParts.find((p) => looksLikeJobTitle(p) && !looksBadTitle(p));
+            jobTitle = rolePart || (titleParts[0] && !looksBadTitle(titleParts[0]) ? titleParts[0] : '');
           }
           if (!company) {
             company =
@@ -713,9 +813,18 @@
                 titleParts.find(
                   (part) =>
                     cleanText(part).toLowerCase() !== cleanText(jobTitle).toLowerCase() &&
+                    !looksLikeJobTitle(part) &&
                     !looksBadCompany(part)
                 ) || ''
-              ) || cleanCompanyName(siteName);
+              ) ||
+              cleanCompanyName(
+                titleParts.find(
+                  (part) =>
+                    cleanText(part).toLowerCase() !== cleanText(jobTitle).toLowerCase() &&
+                    !looksBadCompany(part)
+                ) || ''
+              ) ||
+              cleanCompanyName(siteName);
           }
 
           return {
