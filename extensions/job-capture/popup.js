@@ -918,6 +918,11 @@
   let lastGenerationResult = null;
   let cachedProfileId = null;
 
+  // Enable generate button when user edits/pastes JD text
+  jdTextarea.addEventListener('input', () => {
+    generateBtn.disabled = !jdTextarea.value.trim();
+  });
+
   function setTailorMsg(msg, state = '') {
     tailorMsg.textContent = msg || '';
     tailorMsg.dataset.state = msg ? state : '';
