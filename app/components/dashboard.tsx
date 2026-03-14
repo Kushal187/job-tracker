@@ -1021,6 +1021,9 @@ export function Dashboard({
               {userEmail}
             </span>
           ) : null}
+          <a href="/profile" style={styles.btnSecondary}>
+            Resume Profile
+          </a>
           <button
             type="button"
             style={styles.btnSecondary}

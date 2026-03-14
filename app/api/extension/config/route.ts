@@ -20,11 +20,14 @@ export async function GET(request: Request) {
     );
   }
 
+  const resumeApiUrl = normalizeBaseUrl(process.env.NEXT_PUBLIC_RESUME_API_URL);
+
   return NextResponse.json(
     {
       appBaseUrl,
       supabaseUrl,
-      supabaseAnonKey
+      supabaseAnonKey,
+      resumeApiUrl
     },
     {
       headers: {
