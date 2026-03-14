@@ -191,8 +191,8 @@ function serializeFact(fact: Fact): Omit<Fact, '_fields' | '_collapsed'> {
 
 const SECTIONS: { type: FactType; label: string; singular: string }[] = [
   { type: 'experience', label: 'Experience', singular: 'Experience' },
-  { type: 'project', label: 'Projects', singular: 'Project' },
   { type: 'education', label: 'Education', singular: 'Education' },
+  { type: 'project', label: 'Projects', singular: 'Project' },
   { type: 'skill', label: 'Skills', singular: 'Skill Category' },
   { type: 'award', label: 'Awards & Certifications', singular: 'Award' },
   { type: 'summary', label: 'Professional Summary', singular: 'Summary' },
@@ -589,6 +589,31 @@ export function ProfileManager() {
       {errorMessage && <div style={s.error}>{errorMessage}</div>}
       {successMessage && <div style={s.success}>{successMessage}</div>}
 
+      {/* ── LaTeX Template ─────────────────────────── */}
+      <div style={s.card}>
+        <h2 style={{ ...s.sectionTitle, marginBottom: 8 }}>LaTeX Template</h2>
+        <p style={{ ...s.helperText, marginBottom: 12 }}>
+          Upload your own .tex resume template. The AI will inject tailored content into it for each job.
+        </p>
+        <div style={s.uploadRow}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".tex"
+            style={{ display: 'none' }}
+            onChange={e => { const file = e.target.files?.[0]; if (file) handleUploadTex(file); }}
+          />
+          <button type="button" style={s.btnSecondary} onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+            {uploading ? 'Uploading...' : 'Upload .tex'}
+          </button>
+          {hasTexTemplate ? (
+            <span style={{ fontSize: 12, color: '#047857', fontWeight: 600 }}>Custom template uploaded</span>
+          ) : (
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>No template uploaded (default will be used)</span>
+          )}
+        </div>
+      </div>
+
       {/* ── Personal Info ──────────────────────────── */}
       <div style={s.card}>
         <h2 style={{ ...s.sectionTitle, marginBottom: 14 }}>Personal Info</h2>
@@ -693,31 +718,6 @@ export function ProfileManager() {
           </div>
         );
       })}
-
-      {/* ── LaTeX Template ─────────────────────────── */}
-      <div style={s.card}>
-        <h2 style={{ ...s.sectionTitle, marginBottom: 8 }}>LaTeX Template</h2>
-        <p style={{ ...s.helperText, marginBottom: 12 }}>
-          Upload your own .tex resume template. The AI will inject tailored content into it for each job.
-        </p>
-        <div style={s.uploadRow}>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".tex"
-            style={{ display: 'none' }}
-            onChange={e => { const file = e.target.files?.[0]; if (file) handleUploadTex(file); }}
-          />
-          <button type="button" style={s.btnSecondary} onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-            {uploading ? 'Uploading...' : 'Upload .tex'}
-          </button>
-          {hasTexTemplate ? (
-            <span style={{ fontSize: 12, color: '#047857', fontWeight: 600 }}>Custom template uploaded</span>
-          ) : (
-            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>No template uploaded (default will be used)</span>
-          )}
-        </div>
-      </div>
 
       {/* Bottom save button for long pages */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', paddingBottom: 40 }}>

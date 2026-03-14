@@ -505,8 +505,8 @@ export function Home() {
             )}
           </h1>
           <p style={subheadStyle}>
-            Keep applications, status changes, and links in one private dashboard, with optional Google Sheets sync
-            when you want a personal backup.
+            Keep applications, status changes, and links in one private dashboard. Tailor your resume to every job with
+            AI, and optionally sync to Google Sheets for a personal backup.
           </p>
 
           <div style={valueGridStyle}>
@@ -515,8 +515,8 @@ export function Home() {
               <div style={valueTextStyle}>Your dashboard and settings stay scoped to your account.</div>
             </div>
             <div style={valueCardStyle}>
-              <div style={styles.valueLabel}>Flexible backup</div>
-              <div style={valueTextStyle}>Work entirely in the app, or connect a sheet for your own export copy.</div>
+              <div style={styles.valueLabel}>AI resume tailoring</div>
+              <div style={valueTextStyle}>Upload your resume once, then generate a tailored PDF for every job in seconds.</div>
             </div>
             <div style={valueCardStyle}>
               <div style={styles.valueLabel}>Fast flow</div>
