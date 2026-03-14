@@ -315,7 +315,8 @@
       apiBaseUrl,
       appBaseUrl: normalizeBaseUrl(body.appBaseUrl || apiBaseUrl),
       supabaseUrl: normalizeBaseUrl(body.supabaseUrl),
-      supabaseAnonKey: normalizeText(body.supabaseAnonKey)
+      supabaseAnonKey: normalizeText(body.supabaseAnonKey),
+      resumeApiUrl: normalizeBaseUrl(body.resumeApiUrl || '')
     };
   }
 
@@ -904,6 +905,178 @@
       submitBtn.disabled = false;
     }
   }
+
+  // ── Resume Tailor ──────────────────────────────────────────────────────
+
+  const captureJdBtn = document.getElementById('captureJdBtn');
+  const jdTextarea = document.getElementById('jdTextarea');
+  const generateBtn = document.getElementById('generateBtn');
+  const generateLabel = document.getElementById('generateLabel');
+  const downloadPdfBtn = document.getElementById('downloadPdfBtn');
+  const tailorMsg = document.getElementById('tailorMsg');
+
+  let lastGenerationResult = null;
+  let cachedProfileId = null;
+
+  function setTailorMsg(msg, state = '') {
+    tailorMsg.textContent = msg || '';
+    tailorMsg.dataset.state = msg ? state : '';
+  }
+
+  async function captureJD() {
+    captureJdBtn.disabled = true;
+    setTailorMsg('Capturing job description...', '');
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) throw new Error('No active tab');
+
+      // Try pinging existing content script; if not loaded, inject it on-demand
+      const ping = await new Promise((resolve) => {
+        chrome.tabs.sendMessage(tab.id, { type: 'PING' }, (r) => {
+          if (chrome.runtime.lastError) resolve(null);
+          else resolve(r);
+        });
+      });
+      if (!ping) {
+        await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+      }
+
+      const resp = await new Promise((resolve) => {
+        chrome.tabs.sendMessage(tab.id, { type: 'CAPTURE_JD' }, (response) => {
+          if (chrome.runtime.lastError) resolve(null);
+          else resolve(response);
+        });
+      });
+
+      if (!resp?.ok) {
+        throw new Error(resp?.error || 'Failed to capture JD from page');
+      }
+
+      const { payload } = resp;
+      jdTextarea.value = payload.jd_text || '';
+      generateBtn.disabled = !jdTextarea.value.trim();
+
+      if (payload.warnings?.length) {
+        setTailorMsg(payload.warnings[0], '');
+      } else {
+        setTailorMsg(`Captured ${jdTextarea.value.length} chars`, 'success');
+      }
+    } catch (err) {
+      setTailorMsg(err.message || 'Capture failed', 'error');
+    } finally {
+      captureJdBtn.disabled = false;
+    }
+  }
+
+  async function generateResume() {
+    const session = await getValidSession();
+    if (!session) {
+      setTailorMsg('Sign in first to generate resumes.', 'error');
+      return;
+    }
+
+    const jdText = jdTextarea.value.trim();
+    if (!jdText || jdText.length < 20) {
+      setTailorMsg('Capture a job description first (min 20 chars).', 'error');
+      return;
+    }
+
+    generateBtn.disabled = true;
+    downloadPdfBtn.style.display = 'none';
+    generateLabel.textContent = 'Generating...';
+    setTailorMsg('Sending to AI pipeline (this may take 20-30s)...', '');
+
+    try {
+      const config = await getExtensionConfig();
+      const resumeApiUrl = config.resumeApiUrl;
+      if (!resumeApiUrl) {
+        throw new Error('Resume API URL not configured. Check your app settings.');
+      }
+
+      // Auto-fetch profile ID if not cached
+      if (!cachedProfileId) {
+        const profileRes = await fetch(`${resumeApiUrl}/api/profile`, {
+          headers: { Authorization: `Bearer ${session.accessToken}` }
+        });
+        if (profileRes.status === 404) {
+          throw new Error('No resume profile found. Create one in the Applyr dashboard under Resume Profile.');
+        }
+        if (!profileRes.ok) throw new Error('Failed to fetch profile');
+        const profileBody = await profileRes.json();
+        cachedProfileId = profileBody.profile.id;
+        await chrome.storage.local.set({ resumeProfileId: cachedProfileId });
+      }
+
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+      const res = await fetch(`${resumeApiUrl}/api/resume/generate`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          jd_text: jdText,
+          jd_url: tab?.url || '',
+          page_title: tab?.title || '',
+          profile_id: cachedProfileId,
+          strictness: 'balanced',
+          return_pdf_base64: true
+        })
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Generation failed (${res.status})`);
+      }
+
+      const body = await res.json();
+      lastGenerationResult = body.result;
+
+      const coverage = Math.round((lastGenerationResult.keyword_coverage || 0) * 100);
+      const warnings = lastGenerationResult.warnings || [];
+      let msg = `Done! Keyword coverage: ${coverage}%`;
+      if (warnings.length) msg += ` | ${warnings.length} warning(s)`;
+      msg += ` | ${lastGenerationResult.duration_ms}ms`;
+      setTailorMsg(msg, 'success');
+
+      if (lastGenerationResult.pdf_base64) {
+        downloadPdfBtn.style.display = 'block';
+      }
+    } catch (err) {
+      setTailorMsg(err.message || 'Generation failed', 'error');
+    } finally {
+      generateBtn.disabled = !jdTextarea.value.trim();
+      generateLabel.textContent = 'Generate Tailored Resume';
+    }
+  }
+
+  function downloadPdf() {
+    if (!lastGenerationResult?.pdf_base64) return;
+    const byteChars = atob(lastGenerationResult.pdf_base64);
+    const byteArray = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) {
+      byteArray[i] = byteChars.charCodeAt(i);
+    }
+    const blob = new Blob([byteArray], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    chrome.downloads.download({
+      url,
+      filename: lastGenerationResult.filename || 'tailored-resume.pdf',
+      saveAs: true
+    });
+  }
+
+  // Load cached profile ID
+  chrome.storage.local.get('resumeProfileId', (data) => {
+    if (data.resumeProfileId) cachedProfileId = data.resumeProfileId;
+  });
+
+  captureJdBtn.addEventListener('click', captureJD);
+  generateBtn.addEventListener('click', generateResume);
+  downloadPdfBtn.addEventListener('click', downloadPdf);
+
+  // ── Event Listeners ──────────────────────────────────────────────────────
 
   sessionBtn.addEventListener('click', () => {
     openSettingsPanel();
