@@ -725,6 +725,10 @@ export function Dashboard({
     () => filteredApplications.filter((a) => a.status === 'Interview').length,
     [filteredApplications]
   );
+  const oaCount = useMemo(
+    () => filteredApplications.filter((a) => a.status === 'OA').length,
+    [filteredApplications]
+  );
   const responseRate = useMemo(() => {
     if (!total) return 0;
     const responsive = filteredApplications.filter(
@@ -1071,6 +1075,8 @@ export function Dashboard({
 
       <p style={styles.statsRow}>
         <span style={styles.statsNum}>{total}</span> applied
+        {' · '}
+        <span style={styles.statsNum}>{oaCount}</span> OAs
         {' · '}
         <span style={styles.statsNum}>{interviewCount}</span> interviews
         {' · '}
