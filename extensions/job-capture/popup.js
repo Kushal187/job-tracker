@@ -896,6 +896,10 @@
       if (!res.ok) throw new Error(body.details || body.error || 'Request failed');
       submitBtn.classList.add('is-success');
       await clearDraft();
+      companyInput.value = '';
+      jobTitleInput.value = '';
+      jobUrlInput.value = '';
+      statusInput.value = 'Applied';
       setTimeout(() => {
         submitBtn.classList.remove('is-success');
       }, 1500);
