@@ -43,3 +43,51 @@ export type UpdateUserSettingsInput = {
   googleSheetTab?: string;
   googleSheetSyncEnabled?: boolean;
 };
+
+// Cold email types
+export type RecruiterRecord = {
+  id: string;
+  user_id: string;
+  name: string;
+  email: string;
+  company: string;
+  title: string;
+  linkedin_url: string;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreateRecruiterInput = {
+  name: string;
+  email: string;
+  company?: string;
+  title?: string;
+  linkedinUrl?: string;
+  notes?: string;
+};
+
+export type UpdateRecruiterInput = Partial<CreateRecruiterInput>;
+
+export type EmailTemplateRecord = {
+  id: string;
+  user_id: string;
+  name: string;
+  subject: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type EmailLogRecord = {
+  id: string;
+  user_id: string;
+  recruiter_id: string;
+  template_id: string | null;
+  subject: string;
+  body: string;
+  status: string;
+  resend_id: string | null;
+  error_message: string | null;
+  sent_at: string;
+};

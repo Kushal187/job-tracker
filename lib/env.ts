@@ -39,3 +39,9 @@ export function getSheetsEnv() {
       typeof serviceAccount.client_email === 'string' ? serviceAccount.client_email : null
   };
 }
+
+export function getGmailEnv() {
+  const email = optionalGet('GMAIL_EMAIL');
+  const appPassword = optionalGet('GMAIL_APP_PASSWORD');
+  return email && appPassword ? { email, appPassword } : null;
+}
