@@ -89,15 +89,36 @@ export async function POST(request: NextRequest) {
 
   const results: Array<{ recruiterId: string; email: string; status: string; error?: string }> = [];
 
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
   for (const recruiter of recruiters) {
     const personalizedSubject = replacePlaceholders(subject, recruiter);
     const personalizedBody = replacePlaceholders(emailBody, recruiter);
+
+    // Create log entry first to get the ID for the tracking pixel
+    const { data: logEntry, error: logError } = await supabase.from('email_logs').insert({
+      user_id: auth.user.id,
+      recruiter_id: recruiter.id,
+      template_id: templateId || null,
+      subject: personalizedSubject,
+      body: personalizedBody,
+      status: 'pending'
+    }).select('id').single();
+
+    if (logError || !logEntry) {
+      results.push({ recruiterId: recruiter.id, email: recruiter.email, status: 'failed', error: 'Failed to create log entry' });
+      continue;
+    }
+
+    // Build HTML with tracking pixel
+    const trackingPixel = `<img src="${appUrl}/api/track/${logEntry.id}/pixel.png" width="1" height="1" style="display:none" alt="" />`;
+    const htmlBody = personalizedBody.replace(/\n/g, '<br/>') + trackingPixel;
 
     const mailOptions: nodemailer.SendMailOptions = {
       from: gmailCreds.email,
       to: recruiter.email,
       subject: personalizedSubject,
-      html: personalizedBody.replace(/\n/g, '<br/>')
+      html: htmlBody
     };
 
     if (resumeBuffer) {
@@ -113,29 +134,11 @@ export async function POST(request: NextRequest) {
     try {
       await transporter.sendMail(mailOptions);
 
-      await supabase.from('email_logs').insert({
-        user_id: auth.user.id,
-        recruiter_id: recruiter.id,
-        template_id: templateId || null,
-        subject: personalizedSubject,
-        body: personalizedBody,
-        status: 'sent'
-      });
-
+      await supabase.from('email_logs').update({ status: 'sent' }).eq('id', logEntry.id);
       results.push({ recruiterId: recruiter.id, email: recruiter.email, status: 'sent' });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-
-      await supabase.from('email_logs').insert({
-        user_id: auth.user.id,
-        recruiter_id: recruiter.id,
-        template_id: templateId || null,
-        subject: personalizedSubject,
-        body: personalizedBody,
-        status: 'failed',
-        error_message: errorMessage
-      });
-
+      await supabase.from('email_logs').update({ status: 'failed', error_message: errorMessage }).eq('id', logEntry.id);
       results.push({ recruiterId: recruiter.id, email: recruiter.email, status: 'failed', error: errorMessage });
     }
   }

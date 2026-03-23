@@ -23,6 +23,8 @@ type EmailLog = {
   status: string;
   sent_at: string;
   error_message: string | null;
+  opened_at: string | null;
+  open_count: number;
   recruiters: { name: string; email: string; company: string } | null;
 };
 
@@ -959,6 +961,8 @@ export function ColdEmailPortal() {
             {' '}&middot;{' '}
             <span style={{ color: '#047857' }}>{logs.filter((l) => l.status === 'sent').length} delivered</span>
             {' '}&middot;{' '}
+            <span style={{ color: '#1D4ED8' }}>{logs.filter((l) => l.opened_at).length} opened</span>
+            {' '}&middot;{' '}
             <span style={{ color: 'var(--danger)' }}>{logs.filter((l) => l.status === 'failed').length} failed</span>
           </div>
           {logs.length === 0 ? (
@@ -997,13 +1001,24 @@ export function ColdEmailPortal() {
                       <td style={s.td}>{log.recruiters?.company || '—'}</td>
                       <td style={{ ...s.td, ...s.tdMuted }}>{formatDate(log.sent_at)}</td>
                       <td style={s.td}>
-                        <span style={{
-                          ...s.statusBadge,
-                          backgroundColor: log.status === 'sent' ? '#047857' : 'var(--danger)',
-                          color: '#fff'
-                        }}>
-                          {log.status}
-                        </span>
+                        {log.opened_at ? (
+                          <>
+                            <span style={{ ...s.statusBadge, backgroundColor: '#1D4ED8', color: '#fff' }}>
+                              Opened
+                            </span>
+                            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                              {formatDate(log.opened_at)}{log.open_count > 1 ? ` (${log.open_count}x)` : ''}
+                            </div>
+                          </>
+                        ) : (
+                          <span style={{
+                            ...s.statusBadge,
+                            backgroundColor: log.status === 'sent' ? '#047857' : 'var(--danger)',
+                            color: '#fff'
+                          }}>
+                            {log.status === 'sent' ? 'Delivered' : log.status}
+                          </span>
+                        )}
                         {log.error_message && (
                           <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 2 }} title={log.error_message}>
                             {log.error_message.length > 30 ? log.error_message.slice(0, 30) + '...' : log.error_message}
