@@ -89,7 +89,8 @@ export async function POST(request: NextRequest) {
 
   const results: Array<{ recruiterId: string; email: string; status: string; error?: string }> = [];
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` || request.headers.get('origin') || 'http://localhost:3000';
+  const appUrl = rawAppUrl.replace(/\/+$/, '');
 
   for (const recruiter of recruiters) {
     const personalizedSubject = replacePlaceholders(subject, recruiter);
