@@ -1025,6 +1025,9 @@ export function Dashboard({
               {userEmail}
             </span>
           ) : null}
+          <a href="/cold-email" style={styles.btnSecondary}>
+            Cold Email
+          </a>
           <a href="/profile" style={styles.btnSecondary}>
             Resume Profile
           </a>
