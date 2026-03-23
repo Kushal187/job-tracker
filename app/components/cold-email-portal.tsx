@@ -188,7 +188,14 @@ const s: Record<string, React.CSSProperties> = {
 export function ColdEmailPortal() {
   const [ready, setReady] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>('recruiters');
+  const [tab, setTabState] = useState<Tab>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.slice(1);
+      if (['recruiters', 'compose', 'history', 'settings'].includes(hash)) return hash as Tab;
+    }
+    return 'recruiters';
+  });
+  const setTab = (t: Tab) => { setTabState(t); window.location.hash = t; };
 
   // Recruiter state
   const [recruiters, setRecruiters] = useState<Recruiter[]>([]);
@@ -956,14 +963,17 @@ export function ColdEmailPortal() {
       {/* ═══════ HISTORY TAB ═══════ */}
       {tab === 'history' && (
         <>
-          <div style={s.statsRow}>
-            <span style={{ fontWeight: 500, color: 'var(--text)' }}>{logs.length}</span> email{logs.length !== 1 ? 's' : ''} sent
-            {' '}&middot;{' '}
-            <span style={{ color: '#047857' }}>{logs.filter((l) => l.status === 'sent').length} delivered</span>
-            {' '}&middot;{' '}
-            <span style={{ color: '#1D4ED8' }}>{logs.filter((l) => l.opened_at).length} opened</span>
-            {' '}&middot;{' '}
-            <span style={{ color: 'var(--danger)' }}>{logs.filter((l) => l.status === 'failed').length} failed</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+            <div style={{ ...s.statsRow, marginBottom: 0 }}>
+              <span style={{ fontWeight: 500, color: 'var(--text)' }}>{logs.length}</span> email{logs.length !== 1 ? 's' : ''} sent
+              {' '}&middot;{' '}
+              <span style={{ color: '#047857' }}>{logs.filter((l) => l.status === 'sent').length} delivered</span>
+              {' '}&middot;{' '}
+              <span style={{ color: '#1D4ED8' }}>{logs.filter((l) => l.opened_at).length} opened</span>
+              {' '}&middot;{' '}
+              <span style={{ color: 'var(--danger)' }}>{logs.filter((l) => l.status === 'failed').length} failed</span>
+            </div>
+            <button type="button" style={s.btnSecondary} onClick={fetchLogs}>Refresh</button>
           </div>
           {logs.length === 0 ? (
             <div style={s.card}>
