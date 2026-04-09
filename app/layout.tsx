@@ -2,8 +2,9 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Applyr',
-  description: 'Simple job application tracker with Google Sheets backup'
+  title: 'Applyr — Private Job Search Workspace',
+  description:
+    'Track applications, autotailor resumes with AI, capture jobs with a Chrome extension, and sync to Google Sheets. Your private job search dashboard.'
 };
 
 export const viewport: Viewport = {
