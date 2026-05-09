@@ -1025,6 +1025,9 @@ export function Dashboard({
               {userEmail}
             </span>
           ) : null}
+          <a href="/jobs" style={styles.btnSecondary}>
+            H1B Jobs
+          </a>
           <a href="/cold-email" style={styles.btnSecondary}>
             Cold Email
           </a>

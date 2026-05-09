@@ -45,3 +45,8 @@ export function getGmailEnv() {
   const appPassword = optionalGet('GMAIL_APP_PASSWORD');
   return email && appPassword ? { email, appPassword } : null;
 }
+
+export function getH1bApiBaseUrl(): string | null {
+  const value = optionalGet('H1B_API_BASE_URL');
+  return value ? value.replace(/\/+$/, '') : null;
+}
