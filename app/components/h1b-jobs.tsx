@@ -65,6 +65,38 @@ type ApplyState = 'idle' | 'pending' | 'tracked' | 'error';
 
 const PER_PAGE = 50;
 const HIDDEN_KEY = 'applyr-hidden-jobs:v1';
+const VIEW_KEY = 'applyr-h1b-view:v1';
+
+type PersistedView = {
+  profile?: string;
+  searchInput?: string;
+  freshness?: Freshness;
+  company?: string;
+  maxExperience?: string;
+  sort?: SortKey;
+  hideSeen?: boolean;
+};
+
+function loadView(): PersistedView {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(VIEW_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? (parsed as PersistedView) : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistView(view: PersistedView) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(VIEW_KEY, JSON.stringify(view));
+  } catch {
+    // ignore
+  }
+}
 
 const QUICK_SEARCHES = [
   'Software Engineer I',
@@ -694,9 +726,26 @@ export function H1bJobs() {
   const [hidden, setHidden] = useState<Record<number, true>>({});
 
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [viewLoaded, setViewLoaded] = useState(false);
 
   useEffect(() => {
     setHidden(loadIdMap(HIDDEN_KEY));
+    const view = loadView();
+    if (typeof view.profile === 'string') setProfile(view.profile);
+    if (typeof view.searchInput === 'string') {
+      setSearchInput(view.searchInput);
+      setSearch(view.searchInput.trim());
+    }
+    if (view.freshness === '' || view.freshness === '24h' || view.freshness === '48h') {
+      setFreshness(view.freshness);
+    }
+    if (typeof view.company === 'string') setCompany(view.company);
+    if (typeof view.maxExperience === 'string') setMaxExperience(view.maxExperience);
+    if (typeof view.sort === 'string' && view.sort in SORT_LABELS) {
+      setSort(view.sort as SortKey);
+    }
+    if (typeof view.hideSeen === 'boolean') setHideSeen(view.hideSeen);
+    setViewLoaded(true);
   }, []);
 
   useEffect(() => {
@@ -754,8 +803,22 @@ export function H1bJobs() {
   }, [profile, search, freshness, company, maxExperience, sort, page]);
 
   useEffect(() => {
+    if (!viewLoaded) return;
     fetchJobs();
-  }, [fetchJobs]);
+  }, [viewLoaded, fetchJobs]);
+
+  useEffect(() => {
+    if (!viewLoaded) return;
+    persistView({
+      profile,
+      searchInput,
+      freshness,
+      company,
+      maxExperience,
+      sort,
+      hideSeen
+    });
+  }, [viewLoaded, profile, searchInput, freshness, company, maxExperience, sort, hideSeen]);
 
   // Stats + companies fetched once
   useEffect(() => {
