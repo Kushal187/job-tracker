@@ -297,7 +297,11 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     border: '1px solid var(--input-border)',
     borderRadius: 8,
-    background: 'var(--surface)',
+    backgroundColor: 'var(--surface)',
+    backgroundImage:
+      "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14' fill='none'%3E%3Cpath d='M3.5 5.25L7 8.75L10.5 5.25' stroke='%236B7280' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")",
+    backgroundRepeat: 'no-repeat',
+    backgroundPosition: 'right 10px center',
     color: 'var(--text)',
     appearance: 'none' as const,
     minWidth: 140
