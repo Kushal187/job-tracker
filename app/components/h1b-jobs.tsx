@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 
 type JobProfile = {
@@ -590,6 +590,63 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'var(--text-secondary)',
     color: 'var(--surface)'
   },
+  modalBackdrop: {
+    position: 'fixed' as const,
+    inset: 0,
+    background: 'rgba(0,0,0,0.4)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 100,
+    padding: 16
+  },
+  modal: {
+    width: 400,
+    maxWidth: 'calc(100vw - 24px)',
+    background: 'var(--surface)',
+    border: '1px solid var(--border)',
+    borderRadius: 8,
+    padding: 20
+  },
+  modalTitle: {
+    fontSize: 14,
+    fontWeight: 600,
+    margin: 0
+  },
+  modalText: {
+    margin: '8px 0 0',
+    fontSize: 13,
+    color: 'var(--text-secondary)',
+    lineHeight: 1.5
+  },
+  modalActions: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 20
+  },
+  modalBtnPrimary: {
+    height: 34,
+    padding: '0 18px',
+    border: 'none',
+    borderRadius: 8,
+    background: 'var(--accent)',
+    color: 'white',
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: 'pointer'
+  },
+  modalBtnSecondary: {
+    height: 34,
+    padding: '0 18px',
+    border: '1px solid var(--border)',
+    borderRadius: 8,
+    background: 'var(--surface)',
+    color: 'var(--text-secondary)',
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: 'pointer'
+  },
   pagination: {
     display: 'flex',
     alignItems: 'center',
@@ -728,6 +785,10 @@ export function H1bJobs() {
   const [applyState, setApplyState] = useState<Record<number, ApplyState>>({});
   const [applyError, setApplyError] = useState<Record<number, string>>({});
   const [hidden, setHidden] = useState<Record<number, true>>({});
+
+  // "Did you apply?" prompt after viewing a job in another tab
+  const pendingViewRef = useRef<Job | null>(null);
+  const [confirmJob, setConfirmJob] = useState<Job | null>(null);
 
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [viewLoaded, setViewLoaded] = useState(false);
@@ -887,7 +948,7 @@ export function H1bJobs() {
     });
   }, []);
 
-  const handleApply = useCallback(
+  const trackApplication = useCallback(
     async (job: Job) => {
       setApplyState((prev) => ({ ...prev, [job.id]: 'pending' }));
       setApplyError((prev) => {
@@ -896,8 +957,6 @@ export function H1bJobs() {
         delete next[job.id];
         return next;
       });
-
-      openInNewTab(job.job_url);
 
       try {
         const {
@@ -946,6 +1005,46 @@ export function H1bJobs() {
     },
     [supabase]
   );
+
+  const handleApply = useCallback(
+    (job: Job) => {
+      openInNewTab(job.job_url);
+      void trackApplication(job);
+    },
+    [trackApplication]
+  );
+
+  const handleView = useCallback((job: Job) => {
+    pendingViewRef.current = job;
+  }, []);
+
+  // When the user returns to this tab after viewing a job, ask if they applied.
+  useEffect(() => {
+    const maybePrompt = () => {
+      if (document.visibilityState !== 'visible') return;
+      const job = pendingViewRef.current;
+      if (!job) return;
+      pendingViewRef.current = null;
+      const state = applyState[job.id] ?? 'idle';
+      if (state === 'tracked' || state === 'pending') return;
+      setConfirmJob(job);
+    };
+    document.addEventListener('visibilitychange', maybePrompt);
+    window.addEventListener('focus', maybePrompt);
+    return () => {
+      document.removeEventListener('visibilitychange', maybePrompt);
+      window.removeEventListener('focus', maybePrompt);
+    };
+  }, [applyState]);
+
+  const confirmApplied = useCallback(() => {
+    if (confirmJob) void trackApplication(confirmJob);
+    setConfirmJob(null);
+  }, [confirmJob, trackApplication]);
+
+  const dismissConfirm = useCallback(() => {
+    setConfirmJob(null);
+  }, []);
 
   const clearAllFilters = useCallback(() => {
     setProfile('');
@@ -1294,6 +1393,7 @@ export function H1bJobs() {
                         target="_blank"
                         rel="noopener noreferrer"
                         style={styles.cardCompany}
+                        onClick={() => handleView(job)}
                       >
                         {job.company_name}
                       </a>
@@ -1326,6 +1426,7 @@ export function H1bJobs() {
                         target="_blank"
                         rel="noopener noreferrer"
                         style={styles.viewBtn}
+                        onClick={() => handleView(job)}
                       >
                         View
                       </a>
@@ -1390,6 +1491,25 @@ export function H1bJobs() {
           >
             Next →
           </button>
+        </div>
+      )}
+
+      {confirmJob && (
+        <div style={styles.modalBackdrop} onClick={dismissConfirm}>
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <h3 style={styles.modalTitle}>Did you apply?</h3>
+            <p style={styles.modalText}>
+              {confirmJob.job_title} at {confirmJob.company_name}
+            </p>
+            <div style={styles.modalActions}>
+              <button type="button" style={styles.modalBtnSecondary} onClick={dismissConfirm}>
+                Not yet
+              </button>
+              <button type="button" style={styles.modalBtnPrimary} onClick={confirmApplied}>
+                Yes, track it
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
