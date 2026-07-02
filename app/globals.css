@@ -49,6 +49,12 @@ select {
   color: var(--text);
 }
 
+.nav-link:hover {
+  background: var(--accent-muted);
+  color: var(--accent);
+  text-decoration: none;
+}
+
 .btn-primary:hover:not(:disabled) {
   background: var(--accent-hover);
 }

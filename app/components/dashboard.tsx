@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import {
   FormEvent,
   useCallback,
@@ -105,33 +106,52 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'space-between',
     flexWrap: 'wrap',
-    rowGap: 12,
-    minHeight: 56,
-    padding: '0 0',
-    borderBottom: '1px solid var(--border-subtle)',
+    gap: 12,
+    minHeight: 60,
+    padding: '10px 16px',
+    background: 'var(--surface)',
+    border: '1px solid var(--border)',
+    borderRadius: 12,
     marginBottom: 24
   },
   topBarLeft: {
     display: 'flex',
     alignItems: 'center',
-    gap: 8
+    gap: 10
   },
   topBarIcon: {
-    width: 26,
-    height: 26,
+    width: 28,
+    height: 28,
     flexShrink: 0,
     display: 'block'
   },
   topBarTitle: {
-    fontSize: 16,
-    fontWeight: 600,
+    fontSize: 18,
+    fontWeight: 700,
     margin: 0,
     letterSpacing: '-0.01em'
   },
-  topBarBadge: {
-    fontSize: 13,
-    color: 'var(--text-secondary)',
-    fontWeight: 400
+  topBarNav: {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 4
+  },
+  navLink: {
+    height: 34,
+    padding: '0 14px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    borderRadius: 8,
+    fontSize: 13.5,
+    fontWeight: 500,
+    color: 'var(--text)',
+    textDecoration: 'none'
+  },
+  navLinkActive: {
+    background: 'var(--accent-muted)',
+    color: 'var(--accent)',
+    fontWeight: 600
   },
   sessionPill: {
     display: 'inline-flex',
@@ -193,14 +213,30 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     cursor: 'pointer'
   },
-  statsRow: {
-    fontSize: 13,
-    color: 'var(--text-secondary)',
-    marginBottom: 16
+  statsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+    gap: 12,
+    marginBottom: 18
   },
-  statsNum: {
-    color: 'var(--text)',
-    fontWeight: 500
+  statTile: {
+    border: '1px solid var(--border)',
+    borderRadius: 12,
+    background: 'var(--surface)',
+    padding: '14px 16px',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 4
+  },
+  statLabel: {
+    fontSize: 12,
+    color: 'var(--text-secondary)'
+  },
+  statValue: {
+    fontSize: 26,
+    fontWeight: 600,
+    lineHeight: 1.2,
+    color: 'var(--text)'
   },
   settingsCard: {
     border: '1px solid var(--border)',
@@ -729,13 +765,17 @@ export function Dashboard({
     () => filteredApplications.filter((a) => a.status === 'OA').length,
     [filteredApplications]
   );
-  const responseRate = useMemo(() => {
-    if (!total) return 0;
-    const responsive = filteredApplications.filter(
-      (a) => a.status === 'Interview' || a.status === 'Accepted'
-    ).length;
-    return Math.round((responsive / total) * 100);
-  }, [filteredApplications, total]);
+  const appliedToday = useMemo(() => {
+    const now = new Date();
+    return applications.filter((a) => {
+      const d = new Date(a.appliedAt);
+      return (
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate()
+      );
+    }).length;
+  }, [applications]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const pagedApplications = useMemo(() => {
@@ -1015,25 +1055,29 @@ export function Dashboard({
     <div style={styles.shell}>
       <header style={styles.topBar}>
         <div style={styles.topBarLeft}>
-          <Image src="/applyr-icon.svg" alt="Applyr logo" width={26} height={26} style={styles.topBarIcon} />
+          <Image src="/applyr-icon.svg" alt="Applyr logo" width={28} height={28} style={styles.topBarIcon} />
           <h1 style={styles.topBarTitle}>Applyr</h1>
-          <span style={styles.topBarBadge}>({total})</span>
         </div>
+        <nav style={styles.topBarNav}>
+          <Link href="/" style={{ ...styles.navLink, ...styles.navLinkActive }}>
+            Dashboard
+          </Link>
+          <a href="/jobs" className="nav-link" style={styles.navLink}>
+            H1B Jobs
+          </a>
+          <a href="/cold-email" className="nav-link" style={styles.navLink}>
+            Cold Email
+          </a>
+          <a href="/profile" className="nav-link" style={styles.navLink}>
+            Resume Profile
+          </a>
+        </nav>
         <div style={styles.topBarRight}>
           {userEmail ? (
             <span style={styles.sessionPill} title={userEmail}>
               {userEmail}
             </span>
           ) : null}
-          <a href="/jobs" style={styles.btnSecondary}>
-            H1B Jobs
-          </a>
-          <a href="/cold-email" style={styles.btnSecondary}>
-            Cold Email
-          </a>
-          <a href="/profile" style={styles.btnSecondary}>
-            Resume Profile
-          </a>
           <button
             type="button"
             style={styles.btnSecondary}
@@ -1079,15 +1123,24 @@ export function Dashboard({
         </div>
       </header>
 
-      <p style={styles.statsRow}>
-        <span style={styles.statsNum}>{total}</span> applied
-        {' · '}
-        <span style={styles.statsNum}>{oaCount}</span> OAs
-        {' · '}
-        <span style={styles.statsNum}>{interviewCount}</span> interviews
-        {' · '}
-        <span style={styles.statsNum}>{responseRate}%</span> response rate
-      </p>
+      <div style={styles.statsGrid}>
+        <div style={styles.statTile}>
+          <span style={styles.statLabel}>Total applied</span>
+          <span style={styles.statValue}>{applications.length.toLocaleString()}</span>
+        </div>
+        <div style={styles.statTile}>
+          <span style={styles.statLabel}>Applied today</span>
+          <span style={styles.statValue}>{appliedToday.toLocaleString()}</span>
+        </div>
+        <div style={styles.statTile}>
+          <span style={styles.statLabel}>OAs</span>
+          <span style={styles.statValue}>{oaCount.toLocaleString()}</span>
+        </div>
+        <div style={styles.statTile}>
+          <span style={styles.statLabel}>Interviews</span>
+          <span style={styles.statValue}>{interviewCount.toLocaleString()}</span>
+        </div>
+      </div>
 
       <section style={styles.settingsCard}>
         <div style={styles.settingsHeader}>
