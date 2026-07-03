@@ -3,6 +3,91 @@
   const manifest = chrome.runtime.getManifest();
   const isStoreBuild = Boolean(manifest.update_url);
 
+  // ── Page-access bridge ──────────────────────────────────────────────────────
+  // The capture UI needs three things from the page it's capturing: basic info
+  // (url/title), autofill fields, and the job description. In the toolbar popup
+  // these come from chrome.tabs/chrome.scripting against the active tab. When the
+  // SAME UI runs embedded inside the in-page floating widget (an iframe on the
+  // page), there is no "active tab" to target — instead we postMessage the parent
+  // content script, which owns the page DOM. EMBEDDED selects the implementation.
+  // Both routes ultimately run the shared scrapers in content.js.
+  const EMBEDDED =
+    window.parent !== window ||
+    new URLSearchParams(location.search).has('embedded');
+
+  function sendTab(tabId, message) {
+    return new Promise((resolve) => {
+      chrome.tabs.sendMessage(tabId, message, (response) => {
+        if (chrome.runtime.lastError) resolve(null);
+        else resolve(response);
+      });
+    });
+  }
+
+  // Ping the content script; inject it on-demand if the page loaded before the
+  // extension (mirrors the pattern captureJD already used), then send.
+  async function messageActiveTab(message) {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) throw new Error('Unable to read active tab.');
+    const ping = await sendTab(tab.id, { type: 'PING' });
+    if (!ping) {
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+    }
+    return sendTab(tab.id, message);
+  }
+
+  const popupBridge = {
+    async getPageInfo() {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      return { url: tab?.url || '', title: tab?.title || '' };
+    },
+    async extractFields() {
+      const resp = await messageActiveTab({ type: 'EXTRACT_FIELDS' });
+      if (!resp?.ok) throw new Error(resp?.error || 'Could not read the page.');
+      return resp.fields;
+    },
+    async captureJd() {
+      const resp = await messageActiveTab({ type: 'CAPTURE_JD' });
+      if (!resp?.ok) throw new Error(resp?.error || 'Failed to capture JD from page');
+      return resp.payload;
+    }
+  };
+
+  function makeEmbeddedBridge() {
+    let seq = 0;
+    const pending = new Map();
+    window.addEventListener('message', (event) => {
+      if (event.source !== window.parent) return;
+      const d = event.data;
+      if (!d || d.source !== 'applyr-content' || d.type !== 'RESPONSE') return;
+      const entry = pending.get(d.id);
+      if (!entry) return;
+      pending.delete(d.id);
+      if (d.ok) entry.resolve(d.data);
+      else entry.reject(new Error(d.error || 'Page bridge error'));
+    });
+    function request(action) {
+      const id = ++seq;
+      return new Promise((resolve, reject) => {
+        pending.set(id, { resolve, reject });
+        window.parent.postMessage({ source: 'applyr-panel', type: 'REQUEST', id, action }, '*');
+        setTimeout(() => {
+          if (pending.has(id)) {
+            pending.delete(id);
+            reject(new Error('The page did not respond.'));
+          }
+        }, 15000);
+      });
+    }
+    return {
+      getPageInfo: () => request('PAGE_INFO'),
+      extractFields: () => request('EXTRACT_FIELDS'),
+      captureJd: () => request('CAPTURE_JD')
+    };
+  }
+
+  const pageBridge = EMBEDDED ? makeEmbeddedBridge() : popupBridge;
+
   const sessionBtn = document.getElementById('sessionBtn');
   const sessionLabel = document.getElementById('sessionLabel');
   const authForm = document.getElementById('authForm');
@@ -28,6 +113,7 @@
   const connectionValue = document.getElementById('connectionValue');
   const connectionHelper = document.getElementById('connectionHelper');
   const themeBtn = document.getElementById('themeBtn');
+  const collapseBtn = document.getElementById('collapseBtn');
   const errorMsg = document.getElementById('errorMsg');
 
   const companyInput = document.getElementById('company');
@@ -469,383 +555,18 @@
 
   async function autofillFromCurrentPage() {
     setError('');
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id || !tab.url) {
-      setError('Unable to read active tab.');
-      return;
-    }
     try {
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: () => {
-          const cleanText = (value) =>
-            typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
-          const meta = (...names) => {
-            for (const name of names) {
-              const byName = document.querySelector(`meta[name="${name}"]`);
-              if (byName?.content) return cleanText(byName.content);
-              const byProperty = document.querySelector(`meta[property="${name}"]`);
-              if (byProperty?.content) return cleanText(byProperty.content);
-            }
-            return '';
-          };
-          const readNodeValue = (node) => {
-            if (!node) return '';
-            return cleanText(
-              node.textContent ||
-                node.getAttribute?.('content') ||
-                node.getAttribute?.('value') ||
-                node.getAttribute?.('alt') ||
-                node.getAttribute?.('aria-label') ||
-                node.getAttribute?.('title') ||
-                ''
-            );
-          };
-          const BAD_TITLE_PATTERNS = [
-            /^home$/i,
-            /^candidate home$/i,
-            /^job alerts?$/i,
-            /^settings$/i,
-            /^sign in$/i,
-            /^search jobs?$/i,
-            /^careers?$/i,
-            /^jobs?$/i,
-            /^about us$/i,
-            /^privacy$/i,
-            /^(apply|application|login|register|dashboard|profile)$/i,
-            /^(404|error|not found|page not found)$/i,
-            /^(loading|please wait|redirecting)$/i,
-            /^\d+\s*(results?|jobs?|openings?)$/i,
-            /^(next|previous|back|page \d+)$/i,
-            /^use ai to/i,
-            /^(show match|tailor my|create.*(cover|resume)|help me|people you|reach out)/i,
-            /^(premium|messaging|notifications|my network)$/i
-          ];
-          const BAD_COMPANY_PATTERNS = [
-            /^home$/i,
-            /^candidate home$/i,
-            /^job alerts?$/i,
-            /^settings$/i,
-            /^sign in$/i,
-            /^read more$/i,
-            /^about us$/i,
-            /^privacy$/i,
-            /^search jobs?$/i,
-            /^(apply now|view (all )?jobs|see more|learn more|follow)$/i,
-            /^(menu|navigation|header|footer|sidebar)$/i,
-            /^\d+$/
-          ];
-          const looksBadTitle = (value) => {
-            const text = cleanText(value);
-            return !text || BAD_TITLE_PATTERNS.some((pattern) => pattern.test(text));
-          };
-          const cleanCompanyName = (value) => {
-            let text = cleanText(value);
-            text = text.replace(/\s*[-–—|]\s*(careers?|jobs?|hiring|openings?|open roles|open positions)\s*$/i, '');
-            text = text.replace(/\b(careers?|jobs?)\s*$/i, '');
-            text = text.replace(/\s*(logo|icon|image|banner)s?\s*$/i, '');
-            text = text.replace(/^(job|position|role|opening)\s+(at|@)\s+/i, '');
-            text = text.replace(/\s*[-–—]\s*[A-Z][a-zA-Z\s]+,\s*[A-Z]{2}\s*$/, '');
-            text = text.replace(/\s+[|:–—-]\s*$/, '');
-            text = text.replace(/^["']+|["']+$/g, '');
-            return text.replace(/\s+/g, ' ').trim();
-          };
-          const looksBadCompany = (value) => {
-            const text = cleanCompanyName(value);
-            return (
-              !text ||
-              BAD_COMPANY_PATTERNS.some((pattern) => pattern.test(text)) ||
-              /^https?:\/\//i.test(text) ||
-              text.length > 80
-            );
-          };
-          const pickFirst = (selectors, isInvalid) => {
-            for (const selector of selectors) {
-              const node = document.querySelector(selector);
-              const value = readNodeValue(node);
-              if (value && !isInvalid(value)) return value;
-            }
-            return '';
-          };
-          const splitCandidates = (value) =>
-            cleanText(value)
-              .split(/\s+[|•:-]\s+|\s+@\s+|\s+at\s+/i)
-              .map(cleanText)
-              .filter(Boolean);
-          const parseStructuredData = () => {
-            const seen = new Set();
-            const queue = [];
-            const push = (value) => {
-              if (!value || typeof value !== 'object' || seen.has(value)) return;
-              seen.add(value);
-              queue.push(value);
-            };
-            for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
-              try {
-                push(JSON.parse(script.textContent || 'null'));
-              } catch {}
-            }
-            while (queue.length) {
-              const current = queue.shift();
-              if (Array.isArray(current)) {
-                current.forEach(push);
-                continue;
-              }
-              const type = current?.['@type'];
-              const types = Array.isArray(type) ? type : [type];
-              if (types.some((item) => String(item).toLowerCase() === 'jobposting')) {
-                const jobTitle = cleanText(current.title || current.name || current.jobTitle);
-                const org = current.hiringOrganization || current.organization || current.employer;
-                const company = cleanText(
-                  typeof org === 'string' ? org : org?.name || org?.legalName || ''
-                );
-                if (jobTitle || company) return { jobTitle, company };
-              }
-              Object.values(current).forEach(push);
-            }
-            return { jobTitle: '', company: '' };
-          };
-          const host = location.hostname;
-          const pageTitle = cleanText(document.title);
-          const metaTitle = meta('og:title', 'twitter:title');
-          const siteName = meta(
-            'og:site_name',
-            'twitter:site',
-            'application-name',
-            'apple-mobile-web-app-title'
-          );
-          const fromStructuredData = parseStructuredData();
-          let company = cleanCompanyName(fromStructuredData.company);
-          let jobTitle = fromStructuredData.jobTitle;
-
-          if (host.includes('linkedin.com')) {
-            // LinkedIn uses obfuscated class names — prefer parsing the page/meta title
-            // Format: "Job Title | Company Name | LinkedIn"
-            const liTitle = metaTitle || pageTitle;
-            const liParts = liTitle.split(/\s*\|\s*/);
-            if (liParts.length >= 3 && liParts[liParts.length - 1].trim().toLowerCase() === 'linkedin') {
-              jobTitle = jobTitle || cleanText(liParts[0]);
-              company = company || cleanCompanyName(liParts[1]);
-            }
-            // Fallback to DOM selectors
-            company =
-              company ||
-              pickFirst(
-                [
-                  '.job-details-jobs-unified-top-card__company-name a',
-                  '.topcard__org-name-link',
-                  '.jobs-unified-top-card__company-name',
-                  '[data-tracking-control-name="public_jobs_topcard-org-name"]',
-                  'a[href*="/company/"]'
-                ],
-                looksBadCompany
-              );
-            jobTitle =
-              jobTitle ||
-              pickFirst(
-                [
-                  '.job-details-jobs-unified-top-card__job-title h1',
-                  '.job-details-jobs-unified-top-card__job-title',
-                  '.top-card-layout__title',
-                  '.jobs-unified-top-card__job-title',
-                  'h1.t-24'
-                ],
-                looksBadTitle
-              );
-          }
-
-          if (host.includes('indeed.com')) {
-            company =
-              company ||
-              pickFirst(
-                [
-                  '[data-testid="inlineHeader-companyName"] a',
-                  '[data-testid="inlineHeader-companyName"]',
-                  '[data-company-name]',
-                  '.jobsearch-InlineCompanyRating a',
-                  '.jobsearch-InlineCompanyRating div'
-                ],
-                looksBadCompany
-              );
-            jobTitle =
-              jobTitle ||
-              pickFirst(
-                [
-                  '[data-testid="jobsearch-JobInfoHeader-title"]',
-                  '.jobsearch-JobInfoHeader-title',
-                  'h1.icl-u-xs-mb--xs',
-                  'h1'
-                ],
-                looksBadTitle
-              );
-          }
-
-          if (host.includes('greenhouse.io')) {
-            const ghLogoAlt = (() => {
-              const img = document.querySelector('#header img[alt], .logo img[alt], header img[alt]');
-              if (!img) return '';
-              return cleanText(img.getAttribute('alt') || '')
-                .replace(/\s*(logo|icon|image|banner)s?\s*$/i, '')
-                .trim();
-            })();
-            const ghUrlCompany = (() => {
-              try {
-                const { hostname, pathname } = new URL(location.href);
-                // boards.greenhouse.io/{company}/jobs/...
-                if (hostname === 'boards.greenhouse.io') {
-                  const match = pathname.match(/^\/([^/]+)/);
-                  if (match) return match[1].replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-                }
-                // {company}.greenhouse.io/...
-                const sub = hostname.replace(/\.greenhouse\.io$/, '');
-                if (sub && sub !== 'boards' && sub !== 'www') {
-                  return sub.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-                }
-              } catch {}
-              return '';
-            })();
-            company =
-              company ||
-              pickFirst(['#header .company-name', '.company-name'], looksBadCompany) ||
-              (ghLogoAlt && !looksBadCompany(ghLogoAlt) ? ghLogoAlt : '') ||
-              (ghUrlCompany && !looksBadCompany(ghUrlCompany) ? ghUrlCompany : '') ||
-              cleanCompanyName(siteName);
-            jobTitle =
-              jobTitle || pickFirst(['#content h1', '.app-title'], looksBadTitle);
-          }
-
-          if (host.includes('lever.co')) {
-            const leverUrlCompany = (() => {
-              try {
-                const match = new URL(location.href).pathname.match(/^\/([^/]+)/);
-                if (match) return match[1].replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-              } catch {}
-              return '';
-            })();
-            company =
-              company ||
-              pickFirst(['.main-header-logo img', '.main-header-logo'], looksBadCompany) ||
-              (leverUrlCompany && !looksBadCompany(leverUrlCompany) ? leverUrlCompany : '') ||
-              cleanCompanyName(siteName);
-            jobTitle =
-              jobTitle ||
-              pickFirst(['.posting-headline h2', '.posting-headline h1'], looksBadTitle);
-          }
-
-          if (host.includes('myworkdayjobs.com') || host.includes('workday.com')) {
-            const wdUrlCompany = (() => {
-              try {
-                const sub = new URL(location.href).hostname.split('.')[0];
-                if (sub && sub !== 'www') return sub.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-              } catch {}
-              return '';
-            })();
-            company =
-              company ||
-              pickFirst(
-                [
-                  '[data-automation-id="companyName"]',
-                  '[data-automation-id="company-name"]',
-                  'header img[alt]',
-                  'header a',
-                  'nav img[alt]'
-                ],
-                looksBadCompany
-              ) ||
-              (wdUrlCompany && !looksBadCompany(wdUrlCompany) ? wdUrlCompany : '') ||
-              cleanCompanyName(siteName);
-            jobTitle =
-              jobTitle ||
-              pickFirst(
-                [
-                  '[data-automation-id="jobPostingHeader"]',
-                  'main h1',
-                  '[role="main"] h1',
-                  'article h1'
-                ],
-                looksBadTitle
-              );
-          }
-
-          if (!jobTitle) {
-            jobTitle = pickFirst(
-              [
-                '[data-automation-id="jobPostingHeader"]',
-                'main h1',
-                '[role="main"] h1',
-                'article h1',
-                'h1',
-                'main h2',
-                '[role="main"] h2'
-              ],
-              looksBadTitle
-            );
-          }
-
-          if (!company) {
-            company =
-              pickFirst(
-                [
-                  '[data-automation-id="companyName"]',
-                  '[data-automation-id="company-name"]',
-                  '[data-testid*="company"]',
-                  '[class*="company"] a',
-                  '[class*="company"]',
-                  '[id*="company"]',
-                  'header img[alt]',
-                  'header a',
-                  'nav img[alt]'
-                ],
-                looksBadCompany
-              ) || cleanCompanyName(siteName);
-          }
-
-          const ROLE_KEYWORDS = /\b(engineer|developer|manager|analyst|designer|scientist|director|intern|associate|consultant|coordinator|specialist|lead|head|vp|chief|officer|architect|devops|sre|qa|frontend|backend|fullstack|full.stack|software|data|product|program|project|marketing|sales|recruiter|accountant|researcher|technician|administrator|executive|advisor|strategist|writer|editor)\b/i;
-          const looksLikeJobTitle = (text) => ROLE_KEYWORDS.test(text);
-
-          const titleParts = splitCandidates(metaTitle || pageTitle);
-          if (!jobTitle) {
-            const rolePart = titleParts.find((p) => looksLikeJobTitle(p) && !looksBadTitle(p));
-            jobTitle = rolePart || (titleParts[0] && !looksBadTitle(titleParts[0]) ? titleParts[0] : '');
-          }
-          if (!company) {
-            company =
-              cleanCompanyName(
-                titleParts.find(
-                  (part) =>
-                    cleanText(part).toLowerCase() !== cleanText(jobTitle).toLowerCase() &&
-                    !looksLikeJobTitle(part) &&
-                    !looksBadCompany(part)
-                ) || ''
-              ) ||
-              cleanCompanyName(
-                titleParts.find(
-                  (part) =>
-                    cleanText(part).toLowerCase() !== cleanText(jobTitle).toLowerCase() &&
-                    !looksBadCompany(part)
-                ) || ''
-              ) ||
-              cleanCompanyName(siteName);
-          }
-
-          return {
-            company: cleanCompanyName(company),
-            jobTitle: cleanText(jobTitle),
-            jobUrl: location.href
-          };
-        }
-      });
-      const extracted = results?.[0]?.result;
+      const extracted = await pageBridge.extractFields();
       if (!extracted) {
         setError('No data extracted. Fill manually.');
         return;
       }
       companyInput.value = normalizeText(extracted.company);
       jobTitleInput.value = normalizeText(extracted.jobTitle);
-      jobUrlInput.value = normalizeText(extracted.jobUrl || tab.url) || tab.url;
+      jobUrlInput.value = normalizeText(extracted.jobUrl);
       await saveDraft();
-    } catch {
-      setError('Unable to read page.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to read page.');
     }
   }
 
@@ -936,36 +657,12 @@
     captureJdBtn.disabled = true;
     setTailorMsg('Capturing job description...', '');
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id) throw new Error('No active tab');
+      const payload = await pageBridge.captureJd();
 
-      // Try pinging existing content script; if not loaded, inject it on-demand
-      const ping = await new Promise((resolve) => {
-        chrome.tabs.sendMessage(tab.id, { type: 'PING' }, (r) => {
-          if (chrome.runtime.lastError) resolve(null);
-          else resolve(r);
-        });
-      });
-      if (!ping) {
-        await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
-      }
-
-      const resp = await new Promise((resolve) => {
-        chrome.tabs.sendMessage(tab.id, { type: 'CAPTURE_JD' }, (response) => {
-          if (chrome.runtime.lastError) resolve(null);
-          else resolve(response);
-        });
-      });
-
-      if (!resp?.ok) {
-        throw new Error(resp?.error || 'Failed to capture JD from page');
-      }
-
-      const { payload } = resp;
-      jdTextarea.value = payload.jd_text || '';
+      jdTextarea.value = payload?.jd_text || '';
       generateBtn.disabled = !jdTextarea.value.trim();
 
-      if (payload.warnings?.length) {
+      if (payload?.warnings?.length) {
         setTailorMsg(payload.warnings[0], '');
       } else {
         setTailorMsg(`Captured ${jdTextarea.value.length} chars`, 'success');
@@ -1016,7 +713,7 @@
         await chrome.storage.local.set({ resumeProfileId: cachedProfileId });
       }
 
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const pageInfo = await pageBridge.getPageInfo().catch(() => ({ url: '', title: '' }));
 
       const res = await fetch(`${resumeApiUrl}/api/resume/generate`, {
         method: 'POST',
@@ -1026,8 +723,8 @@
         },
         body: JSON.stringify({
           jd_text: jdText,
-          jd_url: tab?.url || '',
-          page_title: tab?.title || '',
+          jd_url: pageInfo.url || '',
+          page_title: pageInfo.title || '',
           profile_id: cachedProfileId,
           strictness: 'balanced',
           return_pdf_base64: true
@@ -1115,7 +812,32 @@
     input.addEventListener('change', saveDraft);
   }
 
+  // When the UI is embedded in the in-page floating widget, reveal the collapse
+  // control, let it fill the iframe, and tell the parent content script we're
+  // ready. Popup mode leaves all of this untouched.
+  function setupEmbeddedMode() {
+    if (!EMBEDDED) return;
+    document.documentElement.classList.add('embedded');
+    document.body.classList.add('embedded');
+
+    if (collapseBtn) {
+      setElementVisible(collapseBtn, true);
+      collapseBtn.addEventListener('click', () => {
+        window.parent.postMessage({ source: 'applyr-panel', type: 'COLLAPSE' }, '*');
+      });
+    }
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        window.parent.postMessage({ source: 'applyr-panel', type: 'COLLAPSE' }, '*');
+      }
+    });
+
+    window.parent.postMessage({ source: 'applyr-panel', type: 'READY' }, '*');
+  }
+
   async function initializePopup() {
+    setupEmbeddedMode();
     await loadTheme();
     await loadSettings();
     await loadDraft();

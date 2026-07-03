@@ -40,6 +40,11 @@
       flex-direction: column;
       min-height: 100%;
     }
+    /* Embedded in the in-page floating widget: fill the host iframe so the
+       surface background reaches every edge (no light/dark sliver). */
+    html.embedded, html.embedded body { height: 100%; }
+    body.embedded { width: 100%; max-height: none; min-height: 0; }
+    html.embedded .popup { height: 100%; }
     .header {
       height: 48px;
       display: flex;
@@ -384,6 +389,11 @@
         </button>
       </div>
       <div class="header-actions">
+        <button type="button" class="icon-btn visually-hidden" id="collapseBtn" aria-label="Collapse panel" title="Collapse" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="m13 17 5-5-5-5M6 17l5-5-5-5"/>
+          </svg>
+        </button>
         <button type="button" class="icon-btn" id="settingsBtn" aria-label="Settings" title="Settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/>

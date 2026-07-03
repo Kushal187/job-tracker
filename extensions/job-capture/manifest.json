@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Applyr Capture",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Capture job applications and generate tailored resumes",
   "icons": {
     "16": "icons/icon-16.png",
@@ -24,8 +24,14 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "js": ["content.js", "widget.js"],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["popup.html", "popup.js", "logo.svg", "icons/*"],
+      "matches": ["<all_urls>"]
     }
   ],
   "action": {

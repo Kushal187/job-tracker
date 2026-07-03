@@ -303,19 +303,438 @@ async function captureJobPage() {
   };
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (!message) return;
+/* Autofill field extraction — company / job title / url.
+ * Ported verbatim from the inline scraper that popup.js used to hand to
+ * chrome.scripting.executeScript, so both the toolbar popup (via the
+ * EXTRACT_FIELDS message) and the in-page panel (via the widget bridge) share
+ * one source of truth. Runs in the content-script isolated world: full DOM
+ * access, no page JS — identical to the old executeScript behavior. */
+function extractApplicationFields() {
+  const cleanText = (value) =>
+    typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+  const meta = (...names) => {
+    for (const name of names) {
+      const byName = document.querySelector(`meta[name="${name}"]`);
+      if (byName?.content) return cleanText(byName.content);
+      const byProperty = document.querySelector(`meta[property="${name}"]`);
+      if (byProperty?.content) return cleanText(byProperty.content);
+    }
+    return '';
+  };
+  const readNodeValue = (node) => {
+    if (!node) return '';
+    return cleanText(
+      node.textContent ||
+        node.getAttribute?.('content') ||
+        node.getAttribute?.('value') ||
+        node.getAttribute?.('alt') ||
+        node.getAttribute?.('aria-label') ||
+        node.getAttribute?.('title') ||
+        ''
+    );
+  };
+  const BAD_TITLE_PATTERNS = [
+    /^home$/i,
+    /^candidate home$/i,
+    /^job alerts?$/i,
+    /^settings$/i,
+    /^sign in$/i,
+    /^search jobs?$/i,
+    /^careers?$/i,
+    /^jobs?$/i,
+    /^about us$/i,
+    /^privacy$/i,
+    /^(apply|application|login|register|dashboard|profile)$/i,
+    /^(404|error|not found|page not found)$/i,
+    /^(loading|please wait|redirecting)$/i,
+    /^\d+\s*(results?|jobs?|openings?)$/i,
+    /^(next|previous|back|page \d+)$/i,
+    /^use ai to/i,
+    /^(show match|tailor my|create.*(cover|resume)|help me|people you|reach out)/i,
+    /^(premium|messaging|notifications|my network)$/i
+  ];
+  const BAD_COMPANY_PATTERNS = [
+    /^home$/i,
+    /^candidate home$/i,
+    /^job alerts?$/i,
+    /^settings$/i,
+    /^sign in$/i,
+    /^read more$/i,
+    /^about us$/i,
+    /^privacy$/i,
+    /^search jobs?$/i,
+    /^(apply now|view (all )?jobs|see more|learn more|follow)$/i,
+    /^(menu|navigation|header|footer|sidebar)$/i,
+    /^\d+$/
+  ];
+  const looksBadTitle = (value) => {
+    const text = cleanText(value);
+    return !text || BAD_TITLE_PATTERNS.some((pattern) => pattern.test(text));
+  };
+  const cleanCompanyName = (value) => {
+    let text = cleanText(value);
+    text = text.replace(/\s*[-–—|]\s*(careers?|jobs?|hiring|openings?|open roles|open positions)\s*$/i, '');
+    text = text.replace(/\b(careers?|jobs?)\s*$/i, '');
+    text = text.replace(/\s*(logo|icon|image|banner)s?\s*$/i, '');
+    text = text.replace(/^(job|position|role|opening)\s+(at|@)\s+/i, '');
+    text = text.replace(/\s*[-–—]\s*[A-Z][a-zA-Z\s]+,\s*[A-Z]{2}\s*$/, '');
+    text = text.replace(/\s+[|:–—-]\s*$/, '');
+    text = text.replace(/^["']+|["']+$/g, '');
+    return text.replace(/\s+/g, ' ').trim();
+  };
+  const looksBadCompany = (value) => {
+    const text = cleanCompanyName(value);
+    return (
+      !text ||
+      BAD_COMPANY_PATTERNS.some((pattern) => pattern.test(text)) ||
+      /^https?:\/\//i.test(text) ||
+      text.length > 80
+    );
+  };
+  const pickFirst = (selectors, isInvalid) => {
+    for (const selector of selectors) {
+      const node = document.querySelector(selector);
+      const value = readNodeValue(node);
+      if (value && !isInvalid(value)) return value;
+    }
+    return '';
+  };
+  const splitCandidates = (value) =>
+    cleanText(value)
+      .split(/\s+[|•:-]\s+|\s+@\s+|\s+at\s+/i)
+      .map(cleanText)
+      .filter(Boolean);
+  const parseStructuredData = () => {
+    const seen = new Set();
+    const queue = [];
+    const push = (value) => {
+      if (!value || typeof value !== 'object' || seen.has(value)) return;
+      seen.add(value);
+      queue.push(value);
+    };
+    for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+      try {
+        push(JSON.parse(script.textContent || 'null'));
+      } catch {}
+    }
+    while (queue.length) {
+      const current = queue.shift();
+      if (Array.isArray(current)) {
+        current.forEach(push);
+        continue;
+      }
+      const type = current?.['@type'];
+      const types = Array.isArray(type) ? type : [type];
+      if (types.some((item) => String(item).toLowerCase() === 'jobposting')) {
+        const jobTitle = cleanText(current.title || current.name || current.jobTitle);
+        const org = current.hiringOrganization || current.organization || current.employer;
+        const company = cleanText(
+          typeof org === 'string' ? org : org?.name || org?.legalName || ''
+        );
+        if (jobTitle || company) return { jobTitle, company };
+      }
+      Object.values(current).forEach(push);
+    }
+    return { jobTitle: '', company: '' };
+  };
+  const host = location.hostname;
+  const pageTitle = cleanText(document.title);
+  const metaTitle = meta('og:title', 'twitter:title');
+  const siteName = meta(
+    'og:site_name',
+    'twitter:site',
+    'application-name',
+    'apple-mobile-web-app-title'
+  );
+  const fromStructuredData = parseStructuredData();
+  let company = cleanCompanyName(fromStructuredData.company);
+  let jobTitle = fromStructuredData.jobTitle;
 
-  if (message.type === 'PING') {
-    sendResponse(true);
-    return false;
+  if (host.includes('linkedin.com')) {
+    // LinkedIn uses obfuscated class names — prefer parsing the page/meta title
+    // Format: "Job Title | Company Name | LinkedIn"
+    const liTitle = metaTitle || pageTitle;
+    const liParts = liTitle.split(/\s*\|\s*/);
+    if (liParts.length >= 3 && liParts[liParts.length - 1].trim().toLowerCase() === 'linkedin') {
+      jobTitle = jobTitle || cleanText(liParts[0]);
+      company = company || cleanCompanyName(liParts[1]);
+    }
+    // Fallback to DOM selectors
+    company =
+      company ||
+      pickFirst(
+        [
+          '.job-details-jobs-unified-top-card__company-name a',
+          '.topcard__org-name-link',
+          '.jobs-unified-top-card__company-name',
+          '[data-tracking-control-name="public_jobs_topcard-org-name"]',
+          'a[href*="/company/"]'
+        ],
+        looksBadCompany
+      );
+    jobTitle =
+      jobTitle ||
+      pickFirst(
+        [
+          '.job-details-jobs-unified-top-card__job-title h1',
+          '.job-details-jobs-unified-top-card__job-title',
+          '.top-card-layout__title',
+          '.jobs-unified-top-card__job-title',
+          'h1.t-24'
+        ],
+        looksBadTitle
+      );
   }
 
-  if (message.type !== 'CAPTURE_JD') return;
+  if (host.includes('indeed.com')) {
+    company =
+      company ||
+      pickFirst(
+        [
+          '[data-testid="inlineHeader-companyName"] a',
+          '[data-testid="inlineHeader-companyName"]',
+          '[data-company-name]',
+          '.jobsearch-InlineCompanyRating a',
+          '.jobsearch-InlineCompanyRating div'
+        ],
+        looksBadCompany
+      );
+    jobTitle =
+      jobTitle ||
+      pickFirst(
+        [
+          '[data-testid="jobsearch-JobInfoHeader-title"]',
+          '.jobsearch-JobInfoHeader-title',
+          'h1.icl-u-xs-mb--xs',
+          'h1'
+        ],
+        looksBadTitle
+      );
+  }
 
-  captureJobPage()
-    .then((payload) => sendResponse({ ok: true, payload }))
-    .catch((error) => sendResponse({ ok: false, error: String(error) }));
+  if (host.includes('greenhouse.io')) {
+    const ghLogoAlt = (() => {
+      const img = document.querySelector('#header img[alt], .logo img[alt], header img[alt]');
+      if (!img) return '';
+      return cleanText(img.getAttribute('alt') || '')
+        .replace(/\s*(logo|icon|image|banner)s?\s*$/i, '')
+        .trim();
+    })();
+    const ghUrlCompany = (() => {
+      try {
+        const { hostname, pathname } = new URL(location.href);
+        // boards.greenhouse.io/{company}/jobs/...
+        if (hostname === 'boards.greenhouse.io') {
+          const match = pathname.match(/^\/([^/]+)/);
+          if (match) return match[1].replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        }
+        // {company}.greenhouse.io/...
+        const sub = hostname.replace(/\.greenhouse\.io$/, '');
+        if (sub && sub !== 'boards' && sub !== 'www') {
+          return sub.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        }
+      } catch {}
+      return '';
+    })();
+    company =
+      company ||
+      pickFirst(['#header .company-name', '.company-name'], looksBadCompany) ||
+      (ghLogoAlt && !looksBadCompany(ghLogoAlt) ? ghLogoAlt : '') ||
+      (ghUrlCompany && !looksBadCompany(ghUrlCompany) ? ghUrlCompany : '') ||
+      cleanCompanyName(siteName);
+    jobTitle =
+      jobTitle || pickFirst(['#content h1', '.app-title'], looksBadTitle);
+  }
 
-  return true;
-});
+  if (host.includes('lever.co')) {
+    const leverUrlCompany = (() => {
+      try {
+        const match = new URL(location.href).pathname.match(/^\/([^/]+)/);
+        if (match) return match[1].replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      } catch {}
+      return '';
+    })();
+    company =
+      company ||
+      pickFirst(['.main-header-logo img', '.main-header-logo'], looksBadCompany) ||
+      (leverUrlCompany && !looksBadCompany(leverUrlCompany) ? leverUrlCompany : '') ||
+      cleanCompanyName(siteName);
+    jobTitle =
+      jobTitle ||
+      pickFirst(['.posting-headline h2', '.posting-headline h1'], looksBadTitle);
+  }
+
+  if (host.includes('myworkdayjobs.com') || host.includes('workday.com')) {
+    const wdUrlCompany = (() => {
+      try {
+        const sub = new URL(location.href).hostname.split('.')[0];
+        if (sub && sub !== 'www') return sub.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      } catch {}
+      return '';
+    })();
+    company =
+      company ||
+      pickFirst(
+        [
+          '[data-automation-id="companyName"]',
+          '[data-automation-id="company-name"]',
+          'header img[alt]',
+          'header a',
+          'nav img[alt]'
+        ],
+        looksBadCompany
+      ) ||
+      (wdUrlCompany && !looksBadCompany(wdUrlCompany) ? wdUrlCompany : '') ||
+      cleanCompanyName(siteName);
+    jobTitle =
+      jobTitle ||
+      pickFirst(
+        [
+          '[data-automation-id="jobPostingHeader"]',
+          'main h1',
+          '[role="main"] h1',
+          'article h1'
+        ],
+        looksBadTitle
+      );
+  }
+
+  if (!jobTitle) {
+    jobTitle = pickFirst(
+      [
+        '[data-automation-id="jobPostingHeader"]',
+        'main h1',
+        '[role="main"] h1',
+        'article h1',
+        'h1',
+        'main h2',
+        '[role="main"] h2'
+      ],
+      looksBadTitle
+    );
+  }
+
+  if (!company) {
+    company =
+      pickFirst(
+        [
+          '[data-automation-id="companyName"]',
+          '[data-automation-id="company-name"]',
+          '[data-testid*="company"]',
+          '[class*="company"] a',
+          '[class*="company"]',
+          '[id*="company"]',
+          'header img[alt]',
+          'header a',
+          'nav img[alt]'
+        ],
+        looksBadCompany
+      ) || cleanCompanyName(siteName);
+  }
+
+  const ROLE_KEYWORDS = /\b(engineer|developer|manager|analyst|designer|scientist|director|intern|associate|consultant|coordinator|specialist|lead|head|vp|chief|officer|architect|devops|sre|qa|frontend|backend|fullstack|full.stack|software|data|product|program|project|marketing|sales|recruiter|accountant|researcher|technician|administrator|executive|advisor|strategist|writer|editor)\b/i;
+  const looksLikeJobTitle = (text) => ROLE_KEYWORDS.test(text);
+
+  const titleParts = splitCandidates(metaTitle || pageTitle);
+  if (!jobTitle) {
+    const rolePart = titleParts.find((p) => looksLikeJobTitle(p) && !looksBadTitle(p));
+    jobTitle = rolePart || (titleParts[0] && !looksBadTitle(titleParts[0]) ? titleParts[0] : '');
+  }
+  if (!company) {
+    company =
+      cleanCompanyName(
+        titleParts.find(
+          (part) =>
+            cleanText(part).toLowerCase() !== cleanText(jobTitle).toLowerCase() &&
+            !looksLikeJobTitle(part) &&
+            !looksBadCompany(part)
+        ) || ''
+      ) ||
+      cleanCompanyName(
+        titleParts.find(
+          (part) =>
+            cleanText(part).toLowerCase() !== cleanText(jobTitle).toLowerCase() &&
+            !looksBadCompany(part)
+        ) || ''
+      ) ||
+      cleanCompanyName(siteName);
+  }
+
+  return {
+    company: cleanCompanyName(company),
+    jobTitle: cleanText(jobTitle),
+    jobUrl: location.href
+  };
+}
+
+/* Lightweight "is this a job posting?" signal used by the widget's career-site
+ * detection. Scans JSON-LD for an @type of JobPosting without doing the full
+ * field extraction above. */
+function hasJobPostingLd() {
+  const seen = new Set();
+  const queue = [];
+  const push = (value) => {
+    if (!value || typeof value !== 'object' || seen.has(value)) return;
+    seen.add(value);
+    queue.push(value);
+  };
+  for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+    try {
+      push(JSON.parse(script.textContent || 'null'));
+    } catch {}
+  }
+  while (queue.length) {
+    const current = queue.shift();
+    if (Array.isArray(current)) {
+      current.forEach(push);
+      continue;
+    }
+    const type = current?.['@type'];
+    const types = Array.isArray(type) ? type : [type];
+    if (types.some((item) => String(item).toLowerCase() === 'jobposting')) return true;
+    Object.values(current).forEach(push);
+  }
+  return false;
+}
+
+/* Shared surface for sibling content scripts (widget.js) running in the same
+ * isolated world, and the reference used by the popup's page-access bridge. */
+self.ApplyrCapture = {
+  captureJobPage,
+  extractApplicationFields,
+  hasJobPostingLd,
+  detectGreenhouseJobId,
+  detectLeverCompanyAndId
+};
+
+/* Guard against double-registration when popup.js re-injects content.js
+ * on-demand (chrome.scripting.executeScript) on a page where it already ran. */
+if (!self.__applyrCaptureListener) {
+  self.__applyrCaptureListener = true;
+
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (!message) return;
+
+    if (message.type === 'PING') {
+      sendResponse(true);
+      return false;
+    }
+
+    if (message.type === 'EXTRACT_FIELDS') {
+      try {
+        sendResponse({ ok: true, fields: extractApplicationFields() });
+      } catch (error) {
+        sendResponse({ ok: false, error: String(error) });
+      }
+      return false;
+    }
+
+    if (message.type !== 'CAPTURE_JD') return;
+
+    captureJobPage()
+      .then((payload) => sendResponse({ ok: true, payload }))
+      .catch((error) => sendResponse({ ok: false, error: String(error) }));
+
+    return true;
+  });
+}
