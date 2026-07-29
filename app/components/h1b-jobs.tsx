@@ -622,12 +622,13 @@ const styles: Record<string, React.CSSProperties> = {
   modalActions: {
     display: 'flex',
     justifyContent: 'flex-end',
+    flexWrap: 'wrap' as const,
     gap: 8,
     marginTop: 20
   },
   modalBtnPrimary: {
     height: 34,
-    padding: '0 18px',
+    padding: '0 16px',
     border: 'none',
     borderRadius: 8,
     background: 'var(--accent)',
@@ -638,11 +639,22 @@ const styles: Record<string, React.CSSProperties> = {
   },
   modalBtnSecondary: {
     height: 34,
-    padding: '0 18px',
+    padding: '0 16px',
     border: '1px solid var(--border)',
     borderRadius: 8,
     background: 'var(--surface)',
     color: 'var(--text-secondary)',
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: 'pointer'
+  },
+  modalBtnMuted: {
+    height: 34,
+    padding: '0 16px',
+    border: '1px solid var(--text-secondary)',
+    borderRadius: 8,
+    background: 'var(--text-secondary)',
+    color: 'var(--surface)',
     fontSize: 13,
     fontWeight: 500,
     cursor: 'pointer'
@@ -948,6 +960,15 @@ export function H1bJobs() {
     });
   }, []);
 
+  const hideJob = useCallback((jobId: number) => {
+    setHidden((prev) => {
+      if (prev[jobId]) return prev;
+      const next = { ...prev, [jobId]: true as const };
+      persistIdMap(HIDDEN_KEY, next);
+      return next;
+    });
+  }, []);
+
   const trackApplication = useCallback(
     async (job: Job) => {
       setApplyState((prev) => ({ ...prev, [job.id]: 'pending' }));
@@ -989,12 +1010,7 @@ export function H1bJobs() {
         }
 
         setApplyState((prev) => ({ ...prev, [job.id]: 'tracked' }));
-        setHidden((prev) => {
-          if (prev[job.id]) return prev;
-          const next = { ...prev, [job.id]: true as const };
-          persistIdMap(HIDDEN_KEY, next);
-          return next;
-        });
+        hideJob(job.id);
       } catch (err) {
         setApplyState((prev) => ({ ...prev, [job.id]: 'error' }));
         setApplyError((prev) => ({
@@ -1003,7 +1019,7 @@ export function H1bJobs() {
         }));
       }
     },
-    [supabase]
+    [supabase, hideJob]
   );
 
   const handleApply = useCallback(
@@ -1045,6 +1061,12 @@ export function H1bJobs() {
   const dismissConfirm = useCallback(() => {
     setConfirmJob(null);
   }, []);
+
+  // Not interested at all — hide the job instead of leaving it in the list.
+  const confirmNotInterested = useCallback(() => {
+    if (confirmJob) hideJob(confirmJob.id);
+    setConfirmJob(null);
+  }, [confirmJob, hideJob]);
 
   const clearAllFilters = useCallback(() => {
     setProfile('');
@@ -1504,6 +1526,9 @@ export function H1bJobs() {
             <div style={styles.modalActions}>
               <button type="button" style={styles.modalBtnSecondary} onClick={dismissConfirm}>
                 Not yet
+              </button>
+              <button type="button" style={styles.modalBtnMuted} onClick={confirmNotInterested}>
+                Not interested
               </button>
               <button type="button" style={styles.modalBtnPrimary} onClick={confirmApplied}>
                 Yes, track it
