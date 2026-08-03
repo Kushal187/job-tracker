@@ -48,31 +48,49 @@ export async function GET(request: NextRequest) {
     const dateFrom = request.nextUrl.searchParams.get('dateFrom');
     const dateTo = request.nextUrl.searchParams.get('dateTo');
 
-    let query = supabase
-      .from('applications')
-      .select('*')
-      .eq('user_id', auth.user.id)
-      .order('sheet_row_number', { ascending: false, nullsFirst: false })
-      .order('applied_at', { ascending: false });
+    // PostgREST caps an unbounded select at max-rows (1000 on Supabase), so page
+    // through with explicit ranges instead of relying on a single request.
+    const buildQuery = () => {
+      let query = supabase
+        .from('applications')
+        .select('*')
+        .eq('user_id', auth.user.id)
+        .order('sheet_row_number', { ascending: false, nullsFirst: false })
+        .order('applied_at', { ascending: false })
+        // Final tiebreaker keeps the ordering total, so ranges can't drop or
+        // duplicate rows that tie on the two keys above.
+        .order('id', { ascending: false });
 
-    if (status) {
-      query = query.eq('status', status);
+      if (status) {
+        query = query.eq('status', status);
+      }
+
+      if (dateFrom) {
+        query = query.gte('applied_at', `${dateFrom}T00:00:00.000Z`);
+      }
+
+      if (dateTo) {
+        query = query.lte('applied_at', `${dateTo}T23:59:59.999Z`);
+      }
+
+      return query;
+    };
+
+    const PAGE_SIZE = 1000;
+    const records: ApplicationRecord[] = [];
+
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data, error } = await buildQuery().range(from, from + PAGE_SIZE - 1);
+      if (error) {
+        throw error;
+      }
+
+      const batch = (data || []) as ApplicationRecord[];
+      records.push(...batch);
+      if (batch.length < PAGE_SIZE) break;
     }
 
-    if (dateFrom) {
-      query = query.gte('applied_at', `${dateFrom}T00:00:00.000Z`);
-    }
-
-    if (dateTo) {
-      query = query.lte('applied_at', `${dateTo}T23:59:59.999Z`);
-    }
-
-    const { data, error } = await query;
-    if (error) {
-      throw error;
-    }
-
-    const applications = (data || []).map((item) => toApiApplication(item as ApplicationRecord));
+    const applications = records.map((item) => toApiApplication(item));
 
     return NextResponse.json({ applications });
   } catch (error) {
