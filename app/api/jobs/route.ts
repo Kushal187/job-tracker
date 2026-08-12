@@ -13,7 +13,8 @@ const ALLOWED_PARAMS = [
   'per_page'
 ] as const;
 
-const REVALIDATE_SECONDS = 1800;
+const EDGE_CACHE_SECONDS = 30;
+const STALE_WHILE_REVALIDATE_SECONDS = 120;
 
 export async function GET(request: NextRequest) {
   const baseUrl = getH1bApiBaseUrl();
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest) {
   try {
     const upstream = await fetch(upstreamUrl, {
       headers: { Accept: 'application/json' },
-      next: { revalidate: REVALIDATE_SECONDS }
+      cache: 'no-store'
     });
 
     if (!upstream.ok) {
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
     const body = await upstream.json();
     return NextResponse.json(body, {
       headers: {
-        'Cache-Control': `s-maxage=${REVALIDATE_SECONDS}, stale-while-revalidate=600`
+        'Cache-Control': `s-maxage=${EDGE_CACHE_SECONDS}, stale-while-revalidate=${STALE_WHILE_REVALIDATE_SECONDS}`
       }
     });
   } catch (error) {
