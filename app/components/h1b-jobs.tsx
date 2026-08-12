@@ -512,10 +512,10 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     gap: 8
   },
-  applyBtn: {
+  viewBtn: {
     height: 34,
     padding: '0 18px',
-    border: 'none',
+    border: '1px solid var(--accent)',
     borderRadius: 8,
     background: 'var(--accent)',
     color: 'white',
@@ -528,28 +528,12 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     gap: 4
   },
-  viewBtn: {
-    height: 34,
-    padding: '0 18px',
-    border: '1px solid var(--accent)',
-    borderRadius: 8,
-    background: 'var(--surface)',
-    color: 'var(--accent)',
-    fontSize: 13,
-    fontWeight: 500,
-    cursor: 'pointer',
-    textDecoration: 'none',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4
-  },
-  applyBtnTracked: {
+  viewBtnTracked: {
     background: 'var(--status-accepted-bg)',
-    color: 'var(--status-accepted-text)',
-    cursor: 'default'
+    border: '1px solid var(--status-accepted-bg)',
+    color: 'var(--status-accepted-text)'
   },
-  applyBtnError: {
+  viewBtnError: {
     background: 'var(--surface)',
     color: 'var(--danger)',
     border: '1px solid rgba(220,38,38,0.35)'
@@ -757,16 +741,6 @@ function persistIdMap(key: string, value: Record<number, true>) {
   } catch {
     // ignore
   }
-}
-
-function openInNewTab(url: string) {
-  const a = document.createElement('a');
-  a.href = url;
-  a.target = '_blank';
-  a.rel = 'noopener noreferrer';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
 }
 
 export function H1bJobs() {
@@ -1020,14 +994,6 @@ export function H1bJobs() {
       }
     },
     [supabase, hideJob]
-  );
-
-  const handleApply = useCallback(
-    (job: Job) => {
-      openInNewTab(job.job_url);
-      void trackApplication(job);
-    },
-    [trackApplication]
   );
 
   const handleView = useCallback((job: Job) => {
@@ -1447,30 +1413,22 @@ export function H1bJobs() {
                         href={job.job_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        style={styles.viewBtn}
-                        onClick={() => handleView(job)}
-                      >
-                        View
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() => handleApply(job)}
-                        disabled={state === 'pending' || state === 'tracked'}
                         title={state === 'error' ? applyError[job.id] : undefined}
                         style={{
-                          ...styles.applyBtn,
-                          ...(state === 'tracked' ? styles.applyBtnTracked : null),
-                          ...(state === 'error' ? styles.applyBtnError : null)
+                          ...styles.viewBtn,
+                          ...(state === 'tracked' ? styles.viewBtnTracked : null),
+                          ...(state === 'error' ? styles.viewBtnError : null)
                         }}
+                        onClick={() => handleView(job)}
                       >
                         {state === 'tracked'
                           ? '✓ Tracked'
                           : state === 'pending'
-                            ? 'Applying...'
+                            ? 'Tracking...'
                             : state === 'error'
-                              ? 'Retry'
-                              : 'Apply'}
-                      </button>
+                              ? 'Not tracked'
+                              : 'View'}
+                      </a>
                     </div>
                     <div style={styles.pillToggleRow}>
                       <button
