@@ -24,11 +24,18 @@
       --accent-muted: rgba(194, 65, 12, 0.16); --input-border: #46352c;
     }
     * { box-sizing: border-box; }
+    /* Chrome sizes the toolbar popup from documentElement's width, not <body>'s.
+       With the width set only on <body>, <html> keeps filling Chrome's 800px
+       maximum, so the popup renders 800px wide around a 380px column — a wide
+       band of empty canvas to the right. Width has to live on <html> too. */
+    html { width: 380px; }
     body {
       margin: 0;
       width: 380px;
       min-height: 320px;
       max-height: 520px;
+      display: flex;
+      flex-direction: column;
       font-family: var(--font-family);
       font-size: var(--font-size-body);
       font-weight: var(--font-weight-regular);
@@ -38,13 +45,27 @@
     .popup {
       display: flex;
       flex-direction: column;
-      min-height: 100%;
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: 520px;
     }
     /* Embedded in the in-page floating widget: fill the host iframe so the
        surface background reaches every edge (no light/dark sliver). */
+    html.embedded { width: 100%; }
     html.embedded, html.embedded body { height: 100%; }
     body.embedded { width: 100%; max-height: none; min-height: 0; }
-    html.embedded .popup { height: 100%; }
+    html.embedded .popup { height: 100%; max-height: none; }
+
+    /* Some hosts render the action popup in a resizable window rather than
+       sizing it to the document (Arc does; so does opening popup.html in a tab).
+       There the fixed 380px column leaves a band of empty canvas. Fill the
+       window instead, capping the measure so the form doesn't stretch wide.
+       Inert in Chrome's own popup, which is 380px and never reaches 460px. */
+    @media (min-width: 460px) {
+      html, body { width: 100%; height: 100%; max-height: none; }
+      body { align-items: center; }
+      .popup { width: 100%; max-width: 420px; max-height: none; height: 100%; }
+    }
     .header {
       height: 48px;
       display: flex;
@@ -125,7 +146,10 @@
     }
     .icon-btn svg { width: 16px; height: 16px; }
     .content {
-      flex: 1;
+      flex: 1 1 auto;
+      /* Without min-height:0 a flex item won't shrink below its content, so the
+         column grew past the popup and the document scrolled instead of this. */
+      min-height: 0;
       padding: var(--space-4);
       overflow-y: auto;
     }

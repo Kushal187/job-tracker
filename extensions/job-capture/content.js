@@ -376,6 +376,10 @@ function extractApplicationFields() {
     /^search jobs?$/i,
     /^(apply now|view (all )?jobs|see more|learn more|follow)$/i,
     /^(menu|navigation|header|footer|sidebar)$/i,
+    // Workday's logo carries alt=" careers home" — a nav label, not an employer
+    /^careers?\s+home$/i,
+    /^(logo|banner|image|icon)$/i,
+    /^skip to\b/i,
     /^\d+$/
   ];
   const looksBadTitle = (value) => {
@@ -388,6 +392,8 @@ function extractApplicationFields() {
     text = text.replace(/\b(careers?|jobs?)\s*$/i, '');
     text = text.replace(/\s*(logo|icon|image|banner)s?\s*$/i, '');
     text = text.replace(/^(job|position|role|opening)\s+(at|@)\s+/i, '');
+    // "CAREERS AT NVIDIA" (Workday's header title), "Life at Stripe", etc.
+    text = text.replace(/^(careers?|jobs?|work|life|working)\s+(at|@|with)\s+/i, '');
     text = text.replace(/\s*[-–—]\s*[A-Z][a-zA-Z\s]+,\s*[A-Z]{2}\s*$/, '');
     text = text.replace(/\s+[|:–—-]\s*$/, '');
     text = text.replace(/^["']+|["']+$/g, '');
@@ -429,6 +435,15 @@ function extractApplicationFields() {
       .split(/\s+[|•:-]\s+|\s+@\s+|\s+at\s+/i)
       .map(cleanText)
       .filter(Boolean);
+  // <script> content is raw text, so entities inside ld+json are never decoded
+  // by the parser — Workday and others emit "Assurance &amp; Governance", which
+  // would otherwise be saved verbatim. A textarea decodes without parsing tags.
+  const decodeEntities = (value) => {
+    if (!value || !/&(#\d+|#x[0-9a-fA-F]+|[a-zA-Z]+);/.test(value)) return value;
+    const holder = document.createElement('textarea');
+    holder.innerHTML = value;
+    return holder.value;
+  };
   const parseStructuredData = () => {
     const seen = new Set();
     const queue = [];
@@ -451,10 +466,10 @@ function extractApplicationFields() {
       const type = current?.['@type'];
       const types = Array.isArray(type) ? type : [type];
       if (types.some((item) => String(item).toLowerCase() === 'jobposting')) {
-        const jobTitle = cleanText(current.title || current.name || current.jobTitle);
+        const jobTitle = cleanText(decodeEntities(current.title || current.name || current.jobTitle));
         const org = current.hiringOrganization || current.organization || current.employer;
         const company = cleanText(
-          typeof org === 'string' ? org : org?.name || org?.legalName || ''
+          decodeEntities(typeof org === 'string' ? org : org?.name || org?.legalName || '')
         );
         if (jobTitle || company) return { jobTitle, company };
       }
@@ -657,28 +672,110 @@ function extractApplicationFields() {
       pickFirst(['.posting-headline h2', '.posting-headline h1'], looksBadTitle);
   }
 
-  if (host.includes('myworkdayjobs.com') || host.includes('workday.com')) {
-    const wdUrlCompany = (() => {
-      try {
-        const sub = new URL(location.href).hostname.split('.')[0];
-        if (sub && sub !== 'www') return sub.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-      } catch {}
+  // Tenants routinely front Workday on their own domain (careers.example.com),
+  // so match on Workday's markup as well as the hostname.
+  const isWorkday =
+    host.includes('myworkdayjobs.com') ||
+    host.includes('workday.com') ||
+    Boolean(document.querySelector('[data-automation-id="jobPostingPage"], [data-automation-id="jobPostingHeader"]'));
+
+  if (isWorkday) {
+    // Workday's ld+json hiringOrganization is the *supervisory org* — a payroll
+    // entity like "2100 NVIDIA USA" or "0001 Chevron Corp", not the employer
+    // brand — so it must not win here. og:site_name is absent and the logo's alt
+    // is the nav label " careers home", leaving three usable sources, best first.
+    const titleize = (slug) =>
+      slug
+        .replace(/[-_]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        // Leave existing capitalisation alone (IBM, NVIDIA); only fix all-lower.
+        .replace(/\b[a-z]+/g, (word) => word.charAt(0).toUpperCase() + word.slice(1));
+
+    // 1. Header title — "CAREERS AT NVIDIA"; cleanCompanyName drops the prefix.
+    const wdHeaderTitle = cleanCompanyName(
+      pickFirst(['[data-automation-id="headerTitle"]', '[data-automation-id="logoLink"]'], () => false)
+    );
+
+    // 2. The tenant subdomain. Always present on *.myworkdayjobs.com and always
+    //    the brand — but flattened to one lowercase token ("statestreet"). Recover
+    //    the real wordmark by scanning the posting for a capitalised phrase whose
+    //    letters match the slug *exactly*: "State Street" for statestreet, "NVIDIA"
+    //    for nvidia. Exact comparison only, so this can never invent a name.
+    const normalizeBrand = (value) =>
+      value.replace(/['’]s\b/gi, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+
+    const wordmarkFor = (slug) => {
+      const target = normalizeBrand(slug);
+      if (target.length < 3) return '';
+      const haystack = [
+        meta('og:description', 'description'),
+        document.querySelector('[data-automation-id="jobPostingDescription"]')?.textContent || ''
+      ]
+        .join(' ')
+        .slice(0, 20000);
+      const phrases = /[A-Z][\w&.'’-]*(?:[  ][A-Z][\w&.'’-]*){0,3}/g;
+      let match;
+      while ((match = phrases.exec(haystack)) !== null) {
+        const words = match[0].trim().split(/[\s ]+/);
+        // Longest-first: "State Street Alpha" should still yield "State Street".
+        for (let size = words.length; size >= 1; size -= 1) {
+          const candidate = words.slice(0, size).join(' ');
+          if (normalizeBrand(candidate) === target) {
+            // The phrase may have swept up sentence punctuation ("State Street.").
+            return candidate.replace(/['’]s$/i, '').replace(/[.,;:!?]+$/, '');
+          }
+        }
+      }
       return '';
+    };
+
+    const wdTenant = (() => {
+      const sub = location.hostname.split('.')[0];
+      if (!sub || sub === 'www' || /^wd\d+$/i.test(sub)) return '';
+      return sub;
     })();
-    company =
-      company ||
-      pickFirst(
-        [
-          '[data-automation-id="companyName"]',
-          '[data-automation-id="company-name"]',
-          'header img[alt]',
-          'header a',
-          'nav img[alt]'
-        ],
-        looksBadCompany
-      ) ||
-      (wdUrlCompany && !looksBadCompany(wdUrlCompany) ? wdUrlCompany : '') ||
-      cleanCompanyName(siteName);
+    const wdBrand = wdTenant ? wordmarkFor(wdTenant) || titleize(wdTenant) : '';
+
+    // 3. The career-site id in the logo's src (/NVIDIAExternalCareerSite/assets/logo)
+    //    or in the URL path, minus its boilerplate suffix. Only useful on custom
+    //    domains — plenty of tenants name the site something generic.
+    const GENERIC_SITE_SLUGS =
+      /^(global|jobs?|careers?|external|search|home|main|corporate|campus|professional|experienced|students?|university|all|default|primary|site|us|usa|emea|apac)$/i;
+    const wdSiteCompany = (() => {
+      const logo = document.querySelector('[data-automation-id="logo"], img[src*="/assets/logo"]');
+      const src = logo?.getAttribute('src') || '';
+      const fromLogo = src.match(/\/([^/]+)\/assets\/logo/)?.[1] || '';
+      const fromPath = location.pathname.match(/^\/(?:[a-z]{2}-[A-Z]{2}\/)?([^/]+)/)?.[1] || '';
+      const slug = fromLogo || fromPath;
+      if (!slug) return '';
+      const trimmed = slug.replace(
+        /[-_ ]*(external)?[-_ ]*(career|job)s?[-_ ]*(site|page|portal)?[-_ ]*$/i,
+        ''
+      );
+      // Generic site ids ("External_Career_Site", "Global", "jobs") carry no
+      // brand — yield to the next source rather than handing back boilerplate.
+      if (!trimmed || GENERIC_SITE_SLUGS.test(trimmed)) return '';
+      return titleize(trimmed);
+    })();
+
+    // Last resort, for Workday on a custom domain where there's no tenant slug:
+    // salvage the brand from the supervisory-org string by dropping its leading
+    // cost-centre code and trailing region token. Ranked below the tenant because
+    // the entity is often a subsidiary ("9487 Noble Energy EG Ltd." for Chevron).
+    const wdLegalName = (() => {
+      let text = cleanText(fromStructuredData.company);
+      if (!text) return '';
+      text = text.replace(/^[A-Z]{0,3}[-_ ]?\d{2,6}[\s:.-]+/i, '');
+      text = text.replace(/[\s,]+(usa|u\.s\.a?\.?|uk|emea|apac|latam|global|int'?l|international)\.?$/i, '');
+      return cleanCompanyName(text);
+    })();
+
+    const wdCandidates = [wdHeaderTitle, wdBrand, wdSiteCompany, wdLegalName, cleanCompanyName(siteName)];
+    // Overrides rather than defers to `company`: on Workday the structured-data
+    // value it already holds is the payroll entity, which is the thing we're fixing.
+    company = wdCandidates.find((value) => value && !looksBadCompany(value)) || company;
+
     jobTitle =
       jobTitle ||
       pickFirst(
