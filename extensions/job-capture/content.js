@@ -323,8 +323,13 @@ function extractApplicationFields() {
   };
   const readNodeValue = (node) => {
     if (!node) return '';
+    // innerText first: textContent concatenates block children with no
+    // separator, which glues distinct lines together ("Amazon10001+ employees").
+    // It's '' for hidden/detached nodes and undefined for <meta>, so the
+    // textContent/attribute chain below still covers those.
     return cleanText(
-      node.textContent ||
+      node.innerText ||
+        node.textContent ||
         node.getAttribute?.('content') ||
         node.getAttribute?.('value') ||
         node.getAttribute?.('alt') ||
@@ -351,7 +356,13 @@ function extractApplicationFields() {
     /^(next|previous|back|page \d+)$/i,
     /^use ai to/i,
     /^(show match|tailor my|create.*(cover|resume)|help me|people you|reach out)/i,
-    /^(premium|messaging|notifications|my network)$/i
+    /^(premium|messaging|notifications|my network)$/i,
+    // LinkedIn / job-board feed headings, not the posting itself
+    /^jobs? (based on|for you|you (may|might) be interested in|picked for you)/i,
+    /^(more|similar|recommended|recent|saved|suggested) jobs?\b/i,
+    /^people also viewed$/i,
+    /^\d+\+?\s*results?\b/i,
+    /\bjobs? in\b.*\b(united states|remote)\b/i
   ];
   const BAD_COMPANY_PATTERNS = [
     /^home$/i,
@@ -388,17 +399,31 @@ function extractApplicationFields() {
       !text ||
       BAD_COMPANY_PATTERNS.some((pattern) => pattern.test(text)) ||
       /^https?:\/\//i.test(text) ||
+      // A company *card* rather than a company name — social proof counts mean we
+      // scraped a hover card or sidebar module, not the posting's employer.
+      /\b\d[\d,]*\+?\s*(employees|followers|connections|alumni|employee)\b/i.test(text) ||
+      /\b(connections?|alumni|school alumni) work here\b/i.test(text) ||
       text.length > 80
     );
   };
-  const pickFirst = (selectors, isInvalid) => {
+  const pickNode = (root, selectors) => {
+    if (!root) return null;
     for (const selector of selectors) {
-      const node = document.querySelector(selector);
+      const node = root.querySelector(selector);
+      if (node) return node;
+    }
+    return null;
+  };
+  const pickWithin = (root, selectors, isInvalid) => {
+    if (!root) return '';
+    for (const selector of selectors) {
+      const node = root.querySelector(selector);
       const value = readNodeValue(node);
       if (value && !isInvalid(value)) return value;
     }
     return '';
   };
+  const pickFirst = (selectors, isInvalid) => pickWithin(document, selectors, isInvalid);
   const splitCandidates = (value) =>
     cleanText(value)
       .split(/\s+[|•:-]\s+|\s+@\s+|\s+at\s+/i)
@@ -449,41 +474,109 @@ function extractApplicationFields() {
   const fromStructuredData = parseStructuredData();
   let company = cleanCompanyName(fromStructuredData.company);
   let jobTitle = fromStructuredData.jobTitle;
+  let jobUrl = location.href;
 
   if (host.includes('linkedin.com')) {
-    // LinkedIn uses obfuscated class names — prefer parsing the page/meta title
-    // Format: "Job Title | Company Name | LinkedIn"
-    const liTitle = metaTitle || pageTitle;
-    const liParts = liTitle.split(/\s*\|\s*/);
-    if (liParts.length >= 3 && liParts[liParts.length - 1].trim().toLowerCase() === 'linkedin') {
-      jobTitle = jobTitle || cleanText(liParts[0]);
-      company = company || cleanCompanyName(liParts[1]);
+    // /jobs/search and /jobs/collections are two-pane: the results list, the
+    // "promoted"/sidebar modules and the open posting all live in one document.
+    // An unscoped querySelector therefore hits whichever job card or company
+    // hover-card comes first in DOM order, not the one the user is reading — so
+    // resolve the open posting's pane first and scope every lookup to it.
+    const currentJobId =
+      new URLSearchParams(location.search).get('currentJobId') ||
+      location.pathname.match(/\/jobs\/view\/(\d+)/)?.[1] ||
+      '';
+
+    const detailPane =
+      document.querySelector('.jobs-search__job-details--container') ||
+      document.querySelector('.jobs-search__job-details') ||
+      document.querySelector('.jobs-details__main-content') ||
+      document.querySelector('.jobs-details') ||
+      document.querySelector('.job-view-layout') ||
+      document.querySelector('[class*="jobs-search__job-details"]');
+
+    const twoPane = Boolean(detailPane) && !/\/jobs\/view\//.test(location.pathname);
+
+    const topCard =
+      pickNode(detailPane, [
+        '.job-details-jobs-unified-top-card__container--two-pane',
+        '[class*="jobs-unified-top-card"]',
+        '[class*="top-card-layout"]'
+      ]) || detailPane;
+
+    const scope = topCard || detailPane;
+
+    const paneTitle = pickWithin(
+      scope,
+      [
+        '.job-details-jobs-unified-top-card__job-title h1',
+        '.job-details-jobs-unified-top-card__job-title',
+        '.jobs-unified-top-card__job-title',
+        '.top-card-layout__title',
+        'h1.t-24',
+        'h1'
+      ],
+      looksBadTitle
+    );
+    const paneCompany = pickWithin(
+      scope,
+      [
+        '.job-details-jobs-unified-top-card__company-name a',
+        '.job-details-jobs-unified-top-card__company-name',
+        '.jobs-unified-top-card__company-name',
+        '.topcard__org-name-link',
+        '[data-tracking-control-name="public_jobs_topcard-org-name"]',
+        '.artdeco-entity-lockup__subtitle',
+        'a[href*="/company/"]'
+      ],
+      looksBadCompany
+    );
+
+    // On a two-pane page the pane is authoritative: any JSON-LD in the document
+    // describes the search results, not the posting that's currently open.
+    if (twoPane) {
+      jobTitle = paneTitle || jobTitle;
+      company = cleanCompanyName(paneCompany) || company;
+    } else {
+      jobTitle = jobTitle || paneTitle;
+      company = company || cleanCompanyName(paneCompany);
     }
-    // Fallback to DOM selectors
-    company =
-      company ||
-      pickFirst(
-        [
-          '.job-details-jobs-unified-top-card__company-name a',
-          '.topcard__org-name-link',
-          '.jobs-unified-top-card__company-name',
-          '[data-tracking-control-name="public_jobs_topcard-org-name"]',
-          'a[href*="/company/"]'
-        ],
-        looksBadCompany
-      );
-    jobTitle =
-      jobTitle ||
-      pickFirst(
-        [
-          '.job-details-jobs-unified-top-card__job-title h1',
-          '.job-details-jobs-unified-top-card__job-title',
-          '.top-card-layout__title',
-          '.jobs-unified-top-card__job-title',
-          'h1.t-24'
-        ],
-        looksBadTitle
-      );
+
+    // The Save/Apply control is labelled "Save <title> at <company>" and lives
+    // inside the pane — a reliable backstop when LinkedIn reshuffles class names.
+    if (!jobTitle || !company) {
+      const fromActionLabel = (() => {
+        const nodes = (scope || document).querySelectorAll('[aria-label]');
+        for (const node of nodes) {
+          const label = cleanText(node.getAttribute('aria-label'));
+          const match = label.match(
+            /^(?:save|unsave|apply to|easy apply to)\s+(.+?)\s+at\s+(.+?)\.?$/i
+          );
+          if (match) return { title: cleanText(match[1]), company: cleanText(match[2]) };
+        }
+        return null;
+      })();
+      if (fromActionLabel) {
+        if (!jobTitle && !looksBadTitle(fromActionLabel.title)) jobTitle = fromActionLabel.title;
+        if (!company && !looksBadCompany(fromActionLabel.company)) {
+          company = cleanCompanyName(fromActionLabel.company);
+        }
+      }
+    }
+
+    // Standalone posting pages title as "Job Title | Company Name | LinkedIn".
+    // Search pages title as the *query*, so only trust this off the two-pane view.
+    if (!twoPane) {
+      const liParts = (metaTitle || pageTitle).split(/\s*\|\s*/);
+      if (liParts.length >= 3 && liParts[liParts.length - 1].trim().toLowerCase() === 'linkedin') {
+        jobTitle = jobTitle || cleanText(liParts[0]);
+        company = company || cleanCompanyName(liParts[1]);
+      }
+    }
+
+    // Record the posting's own permalink rather than the disposable search URL,
+    // which carries the query/filters and stops pointing at this job.
+    if (currentJobId) jobUrl = `https://www.linkedin.com/jobs/view/${currentJobId}/`;
   }
 
   if (host.includes('indeed.com')) {
@@ -663,7 +756,7 @@ function extractApplicationFields() {
   return {
     company: cleanCompanyName(company),
     jobTitle: cleanText(jobTitle),
-    jobUrl: location.href
+    jobUrl
   };
 }
 
