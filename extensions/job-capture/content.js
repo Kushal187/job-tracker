@@ -672,6 +672,91 @@ function extractApplicationFields() {
       pickFirst(['.posting-headline h2', '.posting-headline h1'], looksBadTitle);
   }
 
+  const isIcims = host.includes('icims.com');
+
+  // Strips the careers/jobs boilerplate that wraps a tenant slug so only the
+  // brand token is left: "careers-amd" -> "amd", "amd-careers" -> "amd".
+  const stripCareersAffixes = (slug) =>
+    slug
+      .replace(/^(careers?|jobs?|work|talent|apply|recruit(ing|ment)?)[-_.]+/i, '')
+      .replace(/[-_.]+(careers?|jobs?|work|talent|apply|recruit(ing|ment)?)$/i, '')
+      .trim();
+
+  /* Brand-name helpers, shared by the Workday and iCIMS branches below.
+   * Career-site hosts encode the employer as a URL slug and rarely expose it
+   * as text, so these turn a slug into the brand as the company writes it. */
+  const titleize = (slug) =>
+    slug
+      .replace(/[-_]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      // Leave existing capitalisation alone (IBM, NVIDIA); only fix all-lower.
+      .replace(/\b[a-z]+/g, (word) => word.charAt(0).toUpperCase() + word.slice(1));
+
+  const normalizeBrand = (value) =>
+    value.replace(/['’]s\b/gi, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+
+  const wordmarkFor = (slug) => {
+    const target = normalizeBrand(slug);
+    if (target.length < 3) return '';
+    // The brand shows up in the posting prose ("At AMD, our mission…") or in the
+    // site header, even when no element is tagged with it. Each source is read
+    // and separated individually: concatenating raw textContent would run
+    // adjacent elements together ("AMDCareers") and hide the wordmark.
+    const parts = [meta('og:description', 'description'), cleanText(document.title)];
+    const marks = document.querySelectorAll(
+      'h1, h2, header img[alt], [class*="logo" i] img[alt], [class*="logo" i], a[href="/"], [data-automation-id="jobPostingDescription"]'
+    );
+    for (const node of Array.from(marks).slice(0, 60)) parts.push(readNodeValue(node));
+    const body = document.body;
+    parts.push(cleanText(body?.innerText || ''));
+    const haystack = parts.filter(Boolean).join(' \n ').slice(0, 30000);
+    const phrases = /[A-Z][\w&.'’-]*(?:[  ][A-Z][\w&.'’-]*){0,3}/g;
+    let match;
+    while ((match = phrases.exec(haystack)) !== null) {
+      const words = match[0].trim().split(/[\s ]+/);
+      // Longest-first: "State Street Alpha" should still yield "State Street".
+      for (let size = words.length; size >= 1; size -= 1) {
+        const candidate = words.slice(0, size).join(' ');
+        if (normalizeBrand(candidate) === target) {
+          // The phrase may have swept up sentence punctuation ("State Street.").
+          return candidate.replace(/['’]s$/i, '').replace(/[.,;:!?]+$/, '');
+        }
+      }
+    }
+    return '';
+  };
+
+  if (isIcims) {
+    // iCIMS portals expose neither ld+json nor a company element, and the only
+    // <h1> is the site wordmark ("AMD Careers") — which the generic fallback
+    // would otherwise take as the job title. Everything usable is in <title>,
+    // formatted "{Job Title} in {City, State} | Careers at {site name}".
+    const icimsTitleParts = cleanText(document.title).split(/\s*\|\s*/);
+    const icimsLead = icimsTitleParts[0] || '';
+
+    if (!jobTitle) {
+      // Drop a trailing " in <location>" only when the tail really looks like a
+      // place — a comma ("in Santa Clara, California") or a region code
+      // ("in US-CA-Santa Clara") — so "Engineer in Test" survives intact.
+      const withoutLocation = icimsLead.replace(
+        /\s+in\s+[A-Z][^|]*?(?:,\s*[A-Z][^|]*|(?:-[A-Za-z][^|]*){1,})$/,
+        ''
+      );
+      const candidate = cleanText(withoutLocation) || icimsLead;
+      if (candidate && !looksBadTitle(candidate)) jobTitle = candidate;
+    }
+
+    if (!company) {
+      // "Careers at <site name>" is unreliable — AMD's instance has the location
+      // code wired into that token ("Careers at US,CA,Santa Clara"). The
+      // subdomain is the dependable signal: careers-amd.icims.com -> amd -> AMD.
+      const slug = stripCareersAffixes(location.hostname.split('.')[0] || '');
+      const fromSlug = slug ? wordmarkFor(slug) || titleize(slug) : '';
+      if (fromSlug && !looksBadCompany(fromSlug)) company = cleanCompanyName(fromSlug);
+    }
+  }
+
   // Tenants routinely front Workday on their own domain (careers.example.com),
   // so match on Workday's markup as well as the hostname.
   const isWorkday =
@@ -684,14 +769,6 @@ function extractApplicationFields() {
     // entity like "2100 NVIDIA USA" or "0001 Chevron Corp", not the employer
     // brand — so it must not win here. og:site_name is absent and the logo's alt
     // is the nav label " careers home", leaving three usable sources, best first.
-    const titleize = (slug) =>
-      slug
-        .replace(/[-_]+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        // Leave existing capitalisation alone (IBM, NVIDIA); only fix all-lower.
-        .replace(/\b[a-z]+/g, (word) => word.charAt(0).toUpperCase() + word.slice(1));
-
     // 1. Header title — "CAREERS AT NVIDIA"; cleanCompanyName drops the prefix.
     const wdHeaderTitle = cleanCompanyName(
       pickFirst(['[data-automation-id="headerTitle"]', '[data-automation-id="logoLink"]'], () => false)
@@ -702,34 +779,6 @@ function extractApplicationFields() {
     //    the real wordmark by scanning the posting for a capitalised phrase whose
     //    letters match the slug *exactly*: "State Street" for statestreet, "NVIDIA"
     //    for nvidia. Exact comparison only, so this can never invent a name.
-    const normalizeBrand = (value) =>
-      value.replace(/['’]s\b/gi, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
-
-    const wordmarkFor = (slug) => {
-      const target = normalizeBrand(slug);
-      if (target.length < 3) return '';
-      const haystack = [
-        meta('og:description', 'description'),
-        document.querySelector('[data-automation-id="jobPostingDescription"]')?.textContent || ''
-      ]
-        .join(' ')
-        .slice(0, 20000);
-      const phrases = /[A-Z][\w&.'’-]*(?:[  ][A-Z][\w&.'’-]*){0,3}/g;
-      let match;
-      while ((match = phrases.exec(haystack)) !== null) {
-        const words = match[0].trim().split(/[\s ]+/);
-        // Longest-first: "State Street Alpha" should still yield "State Street".
-        for (let size = words.length; size >= 1; size -= 1) {
-          const candidate = words.slice(0, size).join(' ');
-          if (normalizeBrand(candidate) === target) {
-            // The phrase may have swept up sentence punctuation ("State Street.").
-            return candidate.replace(/['’]s$/i, '').replace(/[.,;:!?]+$/, '');
-          }
-        }
-      }
-      return '';
-    };
-
     const wdTenant = (() => {
       const sub = location.hostname.split('.')[0];
       if (!sub || sub === 'www' || /^wd\d+$/i.test(sub)) return '';
