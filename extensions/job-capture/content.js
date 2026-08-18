@@ -394,6 +394,12 @@ function extractApplicationFields() {
     text = text.replace(/^(job|position|role|opening)\s+(at|@)\s+/i, '');
     // "CAREERS AT NVIDIA" (Workday's header title), "Life at Stripe", etc.
     text = text.replace(/^(careers?|jobs?|work|life|working)\s+(at|@|with)\s+/i, '');
+    // Logo alt text — LinkedIn uses "Company logo for, Stealth Startup."
+    text = text.replace(/^(company\s+)?logo\s+(for|of)\b[,:]?\s*/i, '');
+    // Trailing sentence period, unless it belongs to a legal abbreviation.
+    if (!/\b(inc|corp|ltd|co|llc|plc|s\.a|n\.v|a\.g|gmbh|pty|pvt)\.$/i.test(text)) {
+      text = text.replace(/\.$/, '');
+    }
     text = text.replace(/\s*[-–—]\s*[A-Z][a-zA-Z\s]+,\s*[A-Z]{2}\s*$/, '');
     text = text.replace(/\s+[|:–—-]\s*$/, '');
     text = text.replace(/^["']+|["']+$/g, '');
@@ -407,19 +413,34 @@ function extractApplicationFields() {
       /^https?:\/\//i.test(text) ||
       // A company *card* rather than a company name — social proof counts mean we
       // scraped a hover card or sidebar module, not the posting's employer.
-      /\b\d[\d,]*\+?\s*(employees|followers|connections|alumni|employee)\b/i.test(text) ||
+      // No \b before the digit: textContent glues the count to the preceding
+      // name ("Amazon10001+ employees"), so there is no boundary to match.
+      /\d[\d,]*\+?\s*(employees|followers|connections|alumni|employee)\b/i.test(text) ||
       /\b(connections?|alumni|school alumni) work here\b/i.test(text) ||
       text.length > 80
     );
   };
-  const pickNode = (root, selectors) => {
+  const pickNode = (root, selectors, isUsable) => {
     if (!root) return null;
     for (const selector of selectors) {
-      const node = root.querySelector(selector);
-      if (node) return node;
+      for (const node of root.querySelectorAll(selector)) {
+        if (!isUsable || isUsable(node)) return node;
+      }
     }
     return null;
   };
+
+  // A scope has to be able to *contain* the fields. Substring class selectors
+  // like [class*="jobs-unified-top-card"] also match the company logo <img>,
+  // which has no descendants — picking it silently emptied every scoped lookup.
+  const NON_CONTAINER = /^(IMG|SVG|PICTURE|BUTTON|INPUT|BR|HR|USE|PATH|CANVAS|VIDEO|SOURCE)$/;
+  const canHoldPostingFields = (node) =>
+    !NON_CONTAINER.test(node.tagName) &&
+    Boolean(
+      node.querySelector(
+        'h1, h2, [class*="job-title" i], [class*="company-name" i], a[href*="/company/"]'
+      )
+    );
   const pickWithin = (root, selectors, isInvalid) => {
     if (!root) return '';
     for (const selector of selectors) {
@@ -502,24 +523,46 @@ function extractApplicationFields() {
       location.pathname.match(/\/jobs\/view\/(\d+)/)?.[1] ||
       '';
 
+    // Is this the split-pane layout at all? Decided from the URL and the layout
+    // shell rather than from whether a pane selector matched — LinkedIn ships
+    // randomized class names, so a miss must not be read as "single posting".
+    const looksTwoPane =
+      /\/jobs\/(search|collections)/.test(location.pathname) ||
+      Boolean(document.querySelector('.jobs-search-two-pane__layout, .scaffold-layout--list-detail'));
+
     const detailPane =
       document.querySelector('.jobs-search__job-details--container') ||
       document.querySelector('.jobs-search__job-details') ||
       document.querySelector('.jobs-details__main-content') ||
       document.querySelector('.jobs-details') ||
       document.querySelector('.job-view-layout') ||
-      document.querySelector('[class*="jobs-search__job-details"]');
+      document.querySelector('[class*="jobs-search__job-details"]') ||
+      // Current shell: scaffold-layout--list-detail with a separate detail column.
+      document.querySelector('.jobs-search-two-pane__details') ||
+      document.querySelector('.scaffold-layout__detail') ||
+      document.querySelector('[class*="jobs-search-two-pane__details"]');
 
-    const twoPane = Boolean(detailPane) && !/\/jobs\/view\//.test(location.pathname);
+    const twoPane = looksTwoPane && !/\/jobs\/view\//.test(location.pathname);
+
+    // On a single posting there is no competing content, so the whole document
+    // is a safe scope — that is how this worked before the pane logic existed,
+    // and dropping it is what broke /jobs/view/ capture. On a two-pane page it
+    // stays null rather than falling back to the document, because there the
+    // first match is reliably a sidebar card rather than the open posting.
+    const fallbackScope = twoPane ? null : document;
 
     const topCard =
-      pickNode(detailPane, [
-        '.job-details-jobs-unified-top-card__container--two-pane',
-        '[class*="jobs-unified-top-card"]',
-        '[class*="top-card-layout"]'
-      ]) || detailPane;
+      pickNode(
+        detailPane,
+        [
+          '.job-details-jobs-unified-top-card__container--two-pane',
+          '[class*="jobs-unified-top-card"]',
+          '[class*="top-card-layout"]'
+        ],
+        canHoldPostingFields
+      ) || detailPane;
 
-    const scope = topCard || detailPane;
+    const scope = topCard || detailPane || fallbackScope;
 
     const paneTitle = pickWithin(
       scope,
@@ -579,13 +622,29 @@ function extractApplicationFields() {
       }
     }
 
-    // Standalone posting pages title as "Job Title | Company Name | LinkedIn".
-    // Search pages title as the *query*, so only trust this off the two-pane view.
-    if (!twoPane) {
-      const liParts = (metaTitle || pageTitle).split(/\s*\|\s*/);
-      if (liParts.length >= 3 && liParts[liParts.length - 1].trim().toLowerCase() === 'linkedin') {
-        jobTitle = jobTitle || cleanText(liParts[0]);
-        company = company || cleanCompanyName(liParts[1]);
+    // Search pages title as the *query*, so only read the title off a single
+    // posting. Two real formats, verified against live pages:
+    //   "<Company> hiring <Title> in <Location> | LinkedIn"   (current)
+    //   "<Title> | <Company> | LinkedIn"                      (older//some locales)
+    if (!twoPane && (!jobTitle || !company)) {
+      const liTitle = cleanText(metaTitle || pageTitle).replace(/\s*\|\s*LinkedIn\s*$/i, '');
+
+      const hiring = liTitle.match(/^(.+?)\s+hiring\s+(.+)$/i);
+      if (hiring) {
+        const hiringCompany = cleanCompanyName(hiring[1]);
+        // Trailing " in <Location>" — require a comma or a leading capital so a
+        // real title ("Engineer in Test") is not truncated.
+        const hiringTitle = cleanText(
+          hiring[2].replace(/\s+in\s+[A-Z][^,|]*(?:,\s*[^,|]+)?$/, '')
+        );
+        if (hiringTitle && !looksBadTitle(hiringTitle)) jobTitle = jobTitle || hiringTitle;
+        if (hiringCompany && !looksBadCompany(hiringCompany)) company = company || hiringCompany;
+      } else {
+        const liParts = liTitle.split(/\s*\|\s*/);
+        if (liParts.length >= 2) {
+          jobTitle = jobTitle || cleanText(liParts[0]);
+          company = company || cleanCompanyName(liParts[1]);
+        }
       }
     }
 

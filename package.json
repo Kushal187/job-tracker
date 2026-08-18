@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"extensions/job-capture/test/*.test.mjs\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.53.0",
@@ -26,6 +27,7 @@
     "@types/react-dom": "^19.2.2",
     "eslint": "^9.30.1",
     "eslint-config-next": "^16.1.6",
+    "jsdom": "^29.1.1",
     "typescript": "^5.9.2"
   }
 }
